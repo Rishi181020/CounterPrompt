@@ -1,7 +1,7 @@
 import os
 
 
-def complete(messages, model, timeout=8, tools=None, extra_body=None, reasoning=None):
+def complete(messages, model, timeout=8, tools=None, extra_body=None, reasoning=None, tool_choice=None):
     if os.getenv("COUNTERPROMPT_OFFLINE", "").lower() in {"1", "true"}:
         raise RuntimeError("OpenRouter is disabled in offline mode")
     key = os.getenv("OPENROUTER_API_KEY")
@@ -17,7 +17,7 @@ def complete(messages, model, timeout=8, tools=None, extra_body=None, reasoning=
     kwargs = {"model": model, "messages": messages}
     if tools:
         kwargs["tools"] = tools
-        kwargs["tool_choice"] = "auto"
+        kwargs["tool_choice"] = tool_choice or "auto"
     if extra_body:
         kwargs["extra_body"] = dict(extra_body)
     if reasoning is not None:

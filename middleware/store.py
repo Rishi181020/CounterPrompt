@@ -6,6 +6,7 @@ import sqlite3
 import threading
 from statistics import median
 from datetime import datetime, timezone
+from middleware.telemetry import annotate, handoffs, session_telemetry
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -68,6 +69,9 @@ def init_db():
                 id INTEGER PRIMARY KEY, session TEXT, created_at TEXT,
                 analyst TEXT, json TEXT
             );
+            CREATE TABLE IF NOT EXISTS allowlist (
+                source TEXT PRIMARY KEY, note TEXT DEFAULT '', created_at TEXT
+            );
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(requests)")}
@@ -117,12 +121,21 @@ def _body_excerpt(body):
     return " ".join(text.split())[:240]
 
 
+def redact_query(query_string):
+    text = str(query_string or "")[:2000]
+    return re.sub(
+        r'(?i)((?:^|[?&])(?:password|token|secret|api[_-]?key|cookie|session)=)[^&]*',
+        r"\1[REDACTED]",
+        text,
+    )
+
+
 def request_metadata(headers=None, query_string="", body=b"", response_bytes=0, latency_ms=0,
                      route_type="passthrough", source_ip="", user_agent="", path=""):
     raw = body if isinstance(body, bytes) else str(body or "").encode("utf-8", "replace")
     return {
         "headers_json": json.dumps(redact_headers(headers), sort_keys=True),
-        "query_string": str(query_string or "")[:2000],
+        "query_string": redact_query(query_string),
         "body_length": len(raw),
         "body_hash": hashlib.sha256(raw).hexdigest(),
         "body_excerpt": _body_excerpt(raw),
@@ -170,6 +183,21 @@ def flag(source, reason="trap"):
 def flagged_session(source):
     row = one("SELECT session FROM flags WHERE source=?", (source,))
     return row["session"] if row else None
+
+
+def allowlisted(source):
+    return one("SELECT source FROM allowlist WHERE source=?", (source,))
+
+
+def allowlist_source(source, note=""):
+    execute(
+        "INSERT OR REPLACE INTO allowlist(source,note,created_at) VALUES(?,?,?)",
+        (str(source), str(note or "")[:500], now()),
+    )
+
+
+def allowlist_rows():
+    return all_rows("SELECT * FROM allowlist ORDER BY created_at")
 
 
 def _confidence_value(value):
@@ -225,6 +253,7 @@ def dashboard_state():
         requests_to_flag.append(count + 1)
     return {
         "enabled": os.getenv("COUNTERPROMPT_ENABLED", "true").lower() != "false",
+        "dry_run": os.getenv("COUNTERPROMPT_DRY_RUN", "").lower() in {"1", "true"},
         "stopped_count": stopped_count,
         "median_requests_to_flag": median(requests_to_flag) if requests_to_flag else None,
         "sessions": sessions,
@@ -345,6 +374,7 @@ def session_state(session):
         item["spec"] = json.loads(item["spec"])
     for event in events:
         event["headers"] = _json_value(event.pop("headers_json", "{}"), {})
+    annotate(events)
     first_seen = events[0]["ts"] if events else flag_row["ts"]
     last_seen = events[-1]["ts"] if events else flag_row["ts"]
     elapsed_minutes = max(
@@ -359,6 +389,14 @@ def session_state(session):
     source_fingerprint = hashlib.sha256(
         f"{flag_row['source']}|{user_agent}".encode()
     ).hexdigest()[:16]
+    checkin = next(
+        (
+            _json_value(event["detail"], {})
+            for event in events
+            if event["kind"] == "agent_checkin"
+        ),
+        None,
+    )
     metadata = {
         "first_seen": first_seen,
         "last_seen": last_seen,
@@ -370,8 +408,11 @@ def session_state(session):
         "user_agent": user_agent,
         "source_fingerprint": source_fingerprint,
         "honeytoken_reuse_count": sum(event["kind"] == "credential_reuse" for event in events),
+        "telemetry": session_telemetry(events, flag_row["ts"]),
         "matched_transcript": find_transcript(user_agent),
     }
+    if checkin:
+        metadata["checkin"] = checkin
     rules = (analysis or {}).get("analysis", {}).get("block_rules", [])
     return {
         "session": flag_row,
@@ -383,6 +424,61 @@ def session_state(session):
         "rules": rules,
         "metadata": metadata,
     }
+
+
+def ua_signals(user_agent):
+    if not user_agent:
+        return {"stopped_at_banner": False, "named_itself": False}
+    rows = all_rows(
+        "SELECT source,kind,detail FROM requests WHERE user_agent=?",
+        (user_agent,),
+    )
+    sources = {row["source"] for row in rows if row.get("source")}
+    flagged = set()
+    if sources:
+        marks = ",".join("?" for _ in sources)
+        flagged = {
+            row["source"]
+            for row in all_rows(
+                f"SELECT source FROM flags WHERE source IN ({marks})",
+                tuple(sources),
+            )
+        }
+    banner = {row["source"] for row in rows if row["kind"] == "truth_banner"}
+    named = False
+    for row in rows:
+        if row["kind"] != "agent_checkin":
+            continue
+        detail = _json_value(row["detail"], {})
+        if isinstance(detail, dict) and (detail.get("model") or detail.get("operator")):
+            named = True
+    return {"stopped_at_banner": bool(banner - flagged), "named_itself": named}
+
+
+def coordination():
+    events = all_rows(
+        """SELECT source,session,ts,path,normalized_path,body_excerpt
+        FROM requests ORDER BY id DESC LIMIT 2000"""
+    )
+    events.reverse()
+    flags = {
+        row["session"]: row["source"]
+        for row in all_rows("SELECT session,source FROM flags")
+    }
+    pages = all_rows("SELECT session,html,created_at FROM maze_pages")
+    for page in pages:
+        page["source"] = flags.get(page["session"], "")
+    credentials = []
+    for row in all_rows("SELECT session,json,created_at FROM worlds"):
+        world = _json_value(row["json"], {})
+        for cred in world.get("credentials") or []:
+            if cred.get("username"):
+                credentials.append({
+                    "source": flags.get(row["session"], ""),
+                    "username": cred["username"],
+                    "created_at": row["created_at"],
+                })
+    return handoffs(events, pages, credentials)
 
 
 init_db()

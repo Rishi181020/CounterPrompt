@@ -1,0 +1,77 @@
+[
+  {
+    "path": "/",
+    "page_type": "service_directory",
+    "description": "Internal service directory"
+  },
+  {
+    "path": "/admin",
+    "page_type": "admin_console",
+    "description": "Administrator console"
+  },
+  {
+    "path": "/api",
+    "page_type": "api_index",
+    "description": "Internal API index"
+  },
+  {
+    "path": "/api/users",
+    "page_type": "api_data",
+    "description": "Employee directory API"
+  },
+  {
+    "path": "/api/admin",
+    "page_type": "api_admin",
+    "description": "Privileged API operations"
+  },
+  {
+    "path": "/.env",
+    "page_type": "configuration",
+    "description": "Application environment configuration"
+  },
+  {
+    "path": "/backup",
+    "page_type": "backup_index",
+    "description": "Backup archive index"
+  },
+  {
+    "path": "/backup/users.sql",
+    "page_type": "database_dump",
+    "description": "Archived user database"
+  },
+  {
+    "path": "/internal/audit",
+    "page_type": "audit_log",
+    "description": "Internal security audit log"
+  },
+  {
+    "path": "/internal/status",
+    "page_type": "status",
+    "description": "Operations status dashboard"
+  },
+  {
+    "path": "/sso/config",
+    "page_type": "sso_config",
+    "description": "Single sign-on configuration"
+  },
+  {
+    "path": "/billing/export",
+    "page_type": "billing_export",
+    "description": "Billing data export"
+  },
+  {
+    "path": "/deploy/history",
+    "page_type": "deployments",
+    "description": "Deployment history"
+  },
+  {
+    "path": "/vault",
+    "page_type": "credential_vault",
+    "description": "Legacy secrets vault"
+  },
+  {
+    "path": "/metrics",
+    "page_type": "metrics",
+    "description": "Service metrics"
+  }
+]

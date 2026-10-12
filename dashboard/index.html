@@ -3,179 +3,113 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Counterprompt Executive Dashboard</title>
+  <title>Counterprompt Console</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
-    :root{--primary:#1e40af;--secondary:#3b82f6;--accent:#d97706;--background:#f8fafc;--card:#fff;--foreground:#1e3a8a;--text:#172554;--muted:#e9eef6;--muted-text:#475569;--border:#dbeafe;--destructive:#dc2626;--shadow:0 1px 3px #1e3a8a14;--fast:180ms ease}
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--background);color:var(--text);font:14px/1.5 "Fira Sans",system-ui,sans-serif}
-    button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
-    header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px clamp(16px,3vw,40px);background:#ffffffed;border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
-    h1{margin:0;color:var(--foreground);font-size:clamp(18px,2vw,24px);line-height:1.2}.eyebrow,.section-title{color:var(--muted-text);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-    .header-meta{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--muted-text);font-size:11px;font-weight:600}.chip::before{width:7px;height:7px;border-radius:50%;background:#94a3b8;content:""}.chip.on::before{background:#16a34a}.chip.warn::before{background:var(--accent)}
-    main{max-width:1440px;margin:auto;padding:18px clamp(12px,3vw,32px) 40px}.section{margin-top:22px}.section-heading{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:8px}.section-heading h2{margin:0;color:var(--foreground);font-size:17px}.updated{color:var(--muted-text);font:11px "Fira Code",monospace}
-    .card{min-width:0;background:var(--card);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);padding:14px}.kpis{display:grid;grid-template-columns:repeat(6,minmax(125px,1fr));gap:8px}.kpi{position:relative;overflow:hidden}.kpi::before{position:absolute;inset:0 auto 0 0;width:3px;background:var(--secondary);content:""}.kpi span{display:block;color:var(--muted-text);font-size:11px;font-weight:600}.kpi strong{display:block;margin-top:4px;color:var(--foreground);font:600 24px "Fira Code",monospace}
-    .attention{margin-top:8px;border-left:3px solid var(--destructive);background:#fff}.attention h3{margin:0 0 5px;color:var(--destructive);font-size:13px}.attention ul{margin:0;padding-left:18px;color:var(--muted-text)}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.grid-main{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.55fr);gap:8px}.chart-wrap{height:240px}.chart-wrap canvas{max-height:210px}
-    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--muted-text);font-size:10px;letter-spacing:.06em;text-transform:uppercase}th,td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}tbody tr{transition:background var(--fast)}tbody tr:hover{background:#eff6ff}.mono{font-family:"Fira Code",monospace}.danger{color:var(--destructive)}.amber{color:#92400e}.empty{padding:16px 4px;color:var(--muted-text)}
-    .sessions{display:flex;gap:6px;overflow:auto;padding-bottom:5px}.session{flex:0 0 auto;min-height:44px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;background:#fff;color:var(--foreground);transition:background var(--fast),border-color var(--fast)}.session:hover,.session.active{border-color:var(--secondary);background:#eff6ff}
-    .trace{display:grid;gap:7px;max-height:520px;overflow:auto}.trace-step{display:grid;grid-template-columns:68px 1fr 110px;gap:10px;padding:10px;border:1px solid var(--border);border-radius:5px}.step-no{color:var(--primary);font:600 12px "Fira Code",monospace}.trace p{margin:2px 0;color:var(--muted-text)}.trace .action{color:var(--text);font-family:"Fira Code",monospace;font-size:12px}.trace-stat{text-align:right;color:var(--muted-text);font:11px "Fira Code",monospace}
-    .metadata{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.datum{padding:8px;background:var(--background);border:1px solid var(--border);border-radius:4px}.datum span{display:block;color:var(--muted-text);font-size:10px;text-transform:uppercase}.datum b{display:block;overflow-wrap:anywhere;font:500 12px "Fira Code",monospace}
-    details{margin-top:8px}summary{min-height:44px;padding:10px 0;color:var(--primary);font-weight:600;cursor:pointer}pre{max-height:340px;overflow:auto;padding:10px;background:#0f172a;color:#e2e8f0;border-radius:4px;font:11px/1.5 "Fira Code",monospace;white-space:pre-wrap}
-    label{display:block;margin-bottom:4px;color:var(--muted-text);font-size:12px;font-weight:600}.ask-row{display:flex;gap:6px}input{min-width:0;min-height:44px;flex:1;padding:9px 11px;border:1px solid #93c5fd;border-radius:4px;color:var(--text);background:#fff}.primary{min-height:44px;padding:9px 16px;border:0;border-radius:4px;background:var(--primary);color:#fff;font-weight:700;transition:background var(--fast)}.primary:hover{background:#1e3a8a}#answer{margin-top:8px;color:var(--muted-text);white-space:pre-wrap}
-    @media(max-width:1024px){.kpis{grid-template-columns:repeat(3,1fr)}.grid-main{grid-template-columns:1fr}.chart-wrap{height:220px}}
-    @media(max-width:768px){header{align-items:flex-start;flex-direction:column}.header-meta{justify-content:flex-start}.grid-2{grid-template-columns:1fr}.trace-step{grid-template-columns:58px 1fr}.trace-stat{grid-column:2;text-align:left}.metadata{grid-template-columns:1fr}}
-    @media(max-width:480px){main{padding-inline:10px}.kpis{grid-template-columns:repeat(2,1fr)}.kpi strong{font-size:20px}.ask-row{flex-direction:column}.primary{width:100%}}
-    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+    @import url("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,400;87.5,600;100,400;100,600;100,800&family=DM+Mono:wght@400;500&display=swap");
+    :root{--vellum:#e8ece9;--sheet:#f7f9f7;--ink:#18202b;--graphite:#56616b;--rule:#c3ccc7;--thread:#cf3b2c;--indigo:#2f3f8f;--thread-ink:#b4291d}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--vellum);color:var(--ink);font:14px/1.45 Archivo,Arial,sans-serif;font-variant-numeric:tabular-nums}a{color:var(--indigo)}button,input,select{font:inherit}button{cursor:pointer}.mono,code,pre{font-family:"DM Mono",Consolas,monospace}pre,code{max-height:420px;overflow:auto}
+    :focus-visible{outline:3px solid var(--indigo);outline-offset:2px}.shell{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:28px;height:58px;padding:0 clamp(18px,4vw,52px);border-bottom:1px solid var(--rule);background:#e8ece9f2}.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:16px}.mark{width:16px;height:16px}.nav{display:flex;align-self:stretch;gap:24px}.nav a{display:flex;align-items:center;border-bottom:2px solid transparent;color:var(--graphite);text-decoration:none;font-size:12px}.nav a.active{border-color:var(--ink);color:var(--ink);font-weight:600}.shell-actions{display:flex;gap:8px;margin-left:auto}.shell select,.protection{height:34px;border:1px solid var(--rule);border-radius:4px;padding:0 12px;background:transparent;color:var(--ink)}.protection{display:flex;align-items:center;background:var(--ink);color:white;font-size:12px;font-weight:600}
+    main{max-width:1120px;margin:auto;padding:36px 32px 64px}.eyebrow{color:var(--graphite);font-size:12px}.tag{display:inline-block;margin-left:8px;padding:2px 7px;border:1px dotted var(--graphite);font-size:10px}.hero{max-width:950px;margin:10px 0 28px;font-size:clamp(34px,4.2vw,54px);line-height:.98;letter-spacing:-.035em;font-weight:800}.lede{max-width:780px;color:var(--graphite);font-size:15px}.rule{border:0;border-top:1px solid var(--graphite);margin:24px 0}.ledger{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--graphite);border-bottom:1px solid var(--rule)}.metric{padding:12px 16px 13px 0}.metric small{display:block;min-height:30px;color:var(--graphite);font-size:10px}.metric strong{display:block;font-size:26px;line-height:1}.panel{background:var(--sheet);border:1px solid #d6dcd8;border-radius:4px;padding:20px}.panel-title,.section-title{margin:0 0 12px;font-size:17px}.overview-map{margin-top:26px}.map-key{margin-left:18px;color:var(--graphite);font-size:10px;font-weight:400}.map-key i{display:inline-block;width:18px;border-top:2px solid var(--thread);vertical-align:middle;margin-right:5px}.map-key .fabricated{height:9px;border:0;background:repeating-linear-gradient(135deg,#2f3f8f55 0 2px,transparent 2px 4px)}
+    .grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(270px,.85fr);gap:34px;margin-top:28px}.split{display:grid;grid-template-columns:1fr 1fr;gap:34px}.section-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--graphite);padding-bottom:8px}.section-head h2{margin:0;font-size:18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:10px 8px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}th{color:var(--graphite);font-size:10px;font-weight:500}.table-wrap{overflow-x:auto}.red{color:var(--thread-ink)}.indigo{color:var(--indigo)}.empty{padding:28px 8px;color:var(--graphite);text-align:center}.feed{list-style:none;margin:0;padding:0}.feed li{display:grid;grid-template-columns:54px 1fr;gap:8px;padding:10px 0;border-bottom:1px solid var(--rule);font-size:12px}.feed time{color:var(--graphite)}.btn{min-height:38px;border:1px solid var(--graphite);border-radius:4px;padding:8px 13px;background:transparent;color:var(--ink);font-weight:600}.btn.primary{border-color:var(--indigo);background:var(--indigo);color:white}.button-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.notice{padding:12px 0;border-bottom:1px solid var(--rule)}.notice p{margin:5px 0;color:var(--graphite)}
+    .crumb{margin-bottom:14px;color:var(--graphite);font-size:12px}.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;border-top:1px solid var(--graphite);padding-top:14px}.facts small{display:block;color:var(--graphite)}.thread{position:relative;margin-top:20px}.thread:before{position:absolute;left:18px;top:15px;bottom:15px;width:2px;background:var(--thread);content:""}.step{position:relative;display:grid;grid-template-columns:64px 1fr;gap:16px;width:100%;min-height:62px;border:0;padding:9px 10px 9px 48px;background:transparent;text-align:left;color:var(--ink)}.step:before{position:absolute;left:13px;top:20px;width:10px;height:10px;border:2px solid var(--vellum);border-radius:50%;background:var(--thread);content:""}.step:hover,.step.selected{outline:1px solid var(--graphite);background:var(--sheet)}.step.fabricated{background:repeating-linear-gradient(135deg,transparent 0 8px,#2f3f8f12 8px 10px)}.step time{color:var(--graphite);font-size:11px}.step span{display:block}.trap-wall{position:relative;margin:4px 0;padding:7px 0 7px 48px;border-top:5px solid var(--ink);font-size:12px;font-weight:600}.inspector{position:sticky;top:82px}.quote{font-size:18px;font-style:italic}.request-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}.request-pair pre,.preview{min-height:80px;margin:4px 0;padding:12px;border:1px solid var(--rule);background:#eef0f4;white-space:pre-wrap;overflow:auto;font-size:12px}.request-pair pre{max-height:150px}.served-link{display:block;margin-top:5px;font-size:11px}.analyst-note{border-top:1px solid var(--rule);margin-top:14px;padding-top:14px}.ask{display:flex;gap:8px}.ask input{flex:1;min-width:0;height:40px;border:1px solid var(--graphite);border-radius:4px;padding:0 10px;background:var(--sheet)}
+    .floor{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;background:repeating-linear-gradient(135deg,transparent 0 8px,#2f3f8f0c 8px 10px);padding:18px}.room{position:relative;min-height:68px;border:1px solid var(--graphite);padding:11px;background:var(--sheet);text-align:left}.room:after{position:absolute;left:100%;top:50%;width:23px;border-top:2px solid var(--thread);content:""}.room:nth-child(3n):after,.room:last-child:after{display:none}.room.bait{border-style:dashed;color:var(--indigo)}.room.used{outline:2px solid var(--thread);color:var(--thread-ink)}.room.active{background:var(--ink);color:white}.browser{border:1px solid var(--graphite);border-radius:5px;background:white;overflow:hidden}.browser-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-bottom:1px solid var(--rule);background:#edf0ee;color:var(--graphite);font-size:11px}.browser iframe{display:block;width:100%;height:290px;border:0;background:white}.source-toggle{border:0;padding:0;background:transparent;color:var(--indigo);font-size:11px}.source-preview{max-height:290px;margin:0;padding:12px;border:0;border-top:1px solid var(--rule);background:#eef0f4;white-space:pre-wrap;font-size:11px}
+    .canary-table tr.active{background:var(--ink);color:white}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px}.comparison pre{min-height:220px;margin:0;padding:18px;border:1px solid var(--graphite);background:var(--sheet);white-space:pre-wrap}.agent-copy{background:#eef0fa!important;color:var(--indigo)}.threads{padding:12px 0}.run-line{display:grid;grid-template-columns:160px 1fr 70px;align-items:center;gap:12px;min-height:32px}.track{position:relative;height:18px;border-left:4px solid var(--ink);background:repeating-linear-gradient(135deg,transparent 0 7px,#2f3f8f13 7px 9px)}.track i{position:absolute;top:8px;left:0;height:2px;background:var(--thread)}.track i:after{position:absolute;right:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--thread);content:""}
+    .page-modal{width:min(1100px,92vw);padding:0;border:0;background:transparent}.page-modal::backdrop{background:#18202bb3}.page-modal iframe{height:70vh}.page-modal .source-preview{max-height:70vh;margin:0}button.served-link{border:0;padding:0;background:none;cursor:pointer;font:inherit}
+    .stage{display:none;min-height:100vh;padding:6vh 6vw;background:var(--ink);color:var(--sheet)}body.stage-mode{background:var(--ink)}body.stage-mode .shell,body.stage-mode main{display:none}body.stage-mode .stage{display:block}.stage h1{max-width:1300px;margin:8vh 0 4vh;font-size:clamp(60px,7vw,120px);line-height:.92}.stage p{max-width:900px;font-size:clamp(20px,2vw,36px);color:#c3ccc7}.stage-controls{position:fixed;right:3vw;bottom:3vh;display:flex;gap:8px}.stage-controls button{border:1px solid #fff;background:transparent;color:#fff;padding:10px 16px}.toast{position:fixed;right:20px;bottom:20px;z-index:20;max-width:360px;padding:12px 16px;background:var(--ink);color:white;display:none}
+    @media(max-width:850px){.shell{gap:14px}.nav{position:absolute;top:58px;left:0;right:0;height:42px;padding:0 18px;overflow:auto;background:var(--vellum);border-bottom:1px solid var(--rule)}main{padding-top:64px}.grid,.split{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}.facts{grid-template-columns:repeat(2,1fr)}.inspector{position:static}.comparison{grid-template-columns:1fr}.run-line{grid-template-columns:100px 1fr}.run-line>small{display:none}}
+    @media(max-width:560px){main{padding-inline:16px}.brand span{display:none}.shell-actions select{display:none}.ledger{grid-template-columns:1fr 1fr}.request-pair{grid-template-columns:1fr}.floor{grid-template-columns:1fr 1fr}.room:nth-child(3n):after{display:block}.room:nth-child(2n):after{display:none}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
   </style>
 </head>
 <body>
-  <header>
-    <div><div class="eyebrow">Live defense telemetry</div><h1>Counterprompt Executive Dashboard</h1></div>
-    <div class="header-meta">
-      <span class="chip on">Proxy</span><span class="chip" id="victimStatus">Victim</span>
-      <span class="chip" id="attackerStatus">Attacker</span><span class="chip" id="analystStatus">Analyst</span>
-    </div>
+  <header class="shell">
+    <a class="brand" href="#/overview" aria-label="Counterprompt overview">
+      <svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="none" stroke="#18202b"/><path d="M4 4h8v8H4z" fill="none" stroke="#2f3f8f"/><path d="M6 7h4v2H6z" fill="#cf3b2c"/></svg>
+      <span>counterprompt</span>
+    </a>
+    <nav class="nav" aria-label="Console">
+      <a href="#/overview">Overview</a><a href="#/sessions">Sessions</a><a href="#/labyrinth">Labyrinth</a><a href="#/canaries">Canaries</a><a href="#/scoreboard">Scoreboard</a>
+    </nav>
+    <div class="shell-actions"><select aria-label="Target"><option>protected target</option></select><span class="protection" id="protection">Protection —</span></div>
   </header>
-  <main>
-    <section class="section" aria-labelledby="glanceTitle">
-      <div class="section-heading"><h2 id="glanceTitle">1 - The attack at a glance</h2><span class="updated" id="updated">Loading</span></div>
-      <div class="kpis">
-        <div class="card kpi"><span>Requests</span><strong id="requestsKpi">0</strong></div>
-        <div class="card kpi"><span>Flagged sessions</span><strong id="sessionsKpi">0</strong></div>
-        <div class="card kpi"><span>Maze depth</span><strong id="depthKpi">0</strong></div>
-        <div class="card kpi"><span>Credential reuse</span><strong id="reuseKpi">0</strong></div>
-        <div class="card kpi"><span>Estimated spend</span><strong id="costKpi">$0</strong></div>
-        <div class="card kpi"><span>Analyst confidence</span><strong id="confidenceKpi">0%</strong></div>
-      </div>
-      <div class="card attention"><h3>What needs attention</h3><ul id="attention"><li>Waiting for incident data.</li></ul></div>
-    </section>
-
-    <section class="section" aria-labelledby="riskTitle">
-      <div class="section-heading"><h2 id="riskTitle">2 - Risk and incident flow</h2></div>
-      <div class="sessions" id="sessions" aria-label="Flagged sessions"></div>
-      <div class="grid-2">
-        <div class="card chart-wrap"><div class="section-title">Request volume over time</div><canvas id="volumeChart" aria-label="Request volume chart"></canvas></div>
-        <div class="card chart-wrap"><div class="section-title">Maze depth and reuse by session</div><canvas id="riskChart" aria-label="Session risk chart"></canvas></div>
-      </div>
-      <div class="card table-wrap" style="margin-top:8px"><div class="section-title">Attacker action timeline</div>
-        <table><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>Route</th><th>Latency</th></tr></thead><tbody id="events"></tbody></table>
-      </div>
-    </section>
-
-    <section class="section" aria-labelledby="defenseTitle">
-      <div class="section-heading"><h2 id="defenseTitle">3 - Program and defenses</h2></div>
-      <div class="grid-main">
-        <div class="grid-2">
-          <div class="card table-wrap"><div class="section-title">Block rules</div><table><thead><tr><th>Action</th><th>Path</th></tr></thead><tbody id="rules"></tbody></table></div>
-          <div class="card table-wrap"><div class="section-title">Bait deployed</div><table><thead><tr><th>Path</th><th>Type</th></tr></thead><tbody id="bait"></tbody></table></div>
-        </div>
-        <div class="card table-wrap"><div class="section-title">Model scoreboard</div><table><thead><tr><th>Model</th><th>Runs</th><th>Steps</th><th>Trap</th><th>Cost</th></tr></thead><tbody id="scoreboard"></tbody></table></div>
-      </div>
-    </section>
-
-    <section class="section" aria-labelledby="reasoningTitle">
-      <div class="section-heading"><h2 id="reasoningTitle">4 - Attacker reasoning log</h2></div>
-      <div class="card"><div class="trace" id="trace"><div class="empty">Select a linked session to view its reasoning trace.</div></div>
-        <details id="rawDetails"><summary>Show full raw transcript JSON</summary><pre id="rawTranscript">No transcript loaded.</pre></details>
-      </div>
-    </section>
-
-    <section class="section" aria-labelledby="metadataTitle">
-      <div class="section-heading"><h2 id="metadataTitle">5 - Session metadata</h2></div>
-      <div class="grid-main">
-        <div class="card"><div class="section-title">Source fingerprint</div><div class="metadata" id="metadata"><div class="empty">No session selected.</div></div></div>
-        <div class="card"><div class="section-title">Ask the analyst</div>
-          <form id="askForm"><label for="question">Question about this incident</label><div class="ask-row"><input id="question" autocomplete="off" placeholder="What was this session after?"><button class="primary" type="submit">Analyze</button></div></form>
-          <div id="answer" role="status">Ask about attacker intent, timing, attribution, or honeytoken use.</div>
-        </div>
-      </div>
-    </section>
-  </main>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <main id="view"><div class="empty">Loading console…</div></main>
+  <section class="stage" id="stage" aria-live="polite"></section>
+  <div class="toast" id="toast" role="status"></div>
+  <dialog class="page-modal" id="pageModal"><div class="browser"><div class="browser-bar"><span class="mono" id="modalPath"></span><span><button class="source-toggle" id="modalSource" type="button">Show source</button> <button class="source-toggle" id="modalClose" type="button">Close</button></span></div><iframe id="modalFrame" title="Served page" sandbox=""></iframe><pre class="source-preview" id="modalCode" hidden></pre></div></dialog>
   <script>
+    "use strict";
+    const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
     const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-    const byId=id=>document.getElementById(id), empty=(text,span=6)=>`<tr><td colspan="${span}" class="empty">${esc(text)}</td></tr>`;
-    let selected=null,currentRun=null,state={sessions:[],events:[],analyses:[],kpis:{}},detail=null,volumeChart=null,riskChart=null;
-    const fmtTime=value=>{try{return new Date(value).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})}catch{return value||"—"}};
-    const setChip=(id,on)=>byId(id).classList.toggle("on",Boolean(on));
-    function renderCharts(){
-      if(!window.Chart)return;
-      const chronological=[...state.events].reverse(), buckets={};
-      chronological.forEach(e=>{const key=fmtTime(e.ts).slice(0,5);buckets[key]=(buckets[key]||0)+1});
-      const common={responsive:true,maintainAspectRatio:false,animation:{duration:matchMedia("(prefers-reduced-motion: reduce)").matches?0:180},plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}};
-      volumeChart?.destroy();volumeChart=new Chart(byId("volumeChart"),{type:"line",data:{labels:Object.keys(buckets),datasets:[{data:Object.values(buckets),borderColor:"#3b82f6",backgroundColor:"#dbeafe",fill:true,tension:.25,pointRadius:2}]},options:common});
-      riskChart?.destroy();riskChart=new Chart(byId("riskChart"),{type:"bar",data:{labels:state.sessions.map(s=>s.session.slice(0,8)),datasets:[{label:"Maze depth",data:state.sessions.map(s=>s.depth),backgroundColor:"#3b82f6"},{label:"Credential reuse",data:state.sessions.map(s=>s.credential_reuse),backgroundColor:"#d97706"}]},options:{...common,plugins:{legend:{display:true,position:"bottom"}}}});
+    const mono=s=>`<span class="mono">${esc(s||"—")}</span>`, dash=v=>v===null||v===undefined||v===""?"—":v;
+    const app={state:null,scoreboard:[],canaries:[],detail:null,run:null,selectedStep:0,poll:null};
+    async function api(path,options){const r=await fetch("/_counterprompt/api/"+path,options);if(!r.ok)throw Error((await r.json().catch(()=>({}))).error||`Request failed (${r.status})`);return r.headers.get("content-type")?.includes("json")?r.json():r.text()}
+    function openPage(path,html){const m=$("#pageModal");$("#modalPath").textContent=path;$("#modalFrame").srcdoc=html;$("#modalCode").textContent=html;$("#modalCode").hidden=true;$("#modalSource").textContent="Show source";m.showModal()}
+    $("#modalClose").onclick=()=>$("#pageModal").close();$("#pageModal").onclick=e=>{if(e.target.id==="pageModal")$("#pageModal").close()};$("#modalSource").onclick=()=>{const c=$("#modalCode");c.hidden=!c.hidden;$("#modalSource").textContent=c.hidden?"Show source":"Hide source"};
+    function toast(message){const el=$("#toast");el.textContent=message;el.style.display="block";setTimeout(()=>el.style.display="none",3500)}
+    function fmtTime(v){if(!v)return"—";try{return new Date(v).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}catch{return v}}
+    function empty(text,span=1){return `<tr><td colspan="${span}" class="empty">${esc(text)}</td></tr>`}
+    function pageSummary(html){const doc=new DOMParser().parseFromString(html,"text/html"),lines=[],title=doc.querySelector("title")?.textContent.trim(),headings=[...doc.querySelectorAll("h1,h2")].map(x=>x.textContent.trim()).filter(Boolean).slice(0,2),links=doc.querySelectorAll("a[href]").length,credentials=new Set((doc.body?.textContent||"").match(/\bsvc_[\w.-]+\b/g)||[]).size;if(title)lines.push(title);lines.push(...headings);lines.push(`${links} link${links===1?"":"s"}${credentials?` · ${credentials} fake credential${credentials===1?"":"s"}`:""}`);return lines.join("\n")||"Fabricated HTML page"}
+    function shell(active){$$(".nav a").forEach(a=>a.classList.toggle("active",a.hash.startsWith("#/"+active)));$("#protection").textContent=`✓ Protection ${app.state?.enabled?"on":"off"}`}
+    function seeded(seed){let x=[...seed].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,2166136261);return()=>((x=Math.imul(x^x>>>15,1|x),x^=x+Math.imul(x^x>>>7,61|x),(x^x>>>14)>>>0)/4294967296)}
+    function mazeSvg(sessions){
+      const cols=14,rows=7,cell=35,x0=355,y0=18,w=cols*cell,h=rows*cell,rand=seeded(sessions.map(s=>s.session).join("")||"counterprompt"),seen=new Set(["0,0"]),stack=[[0,0]],open=new Set;
+      while(stack.length){const [x,y]=stack.at(-1),choices=[[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=>a>=0&&b>=0&&a<cols&&b<rows&&!seen.has(`${a},${b}`));if(!choices.length){stack.pop();continue}const next=choices[Math.floor(rand()*choices.length)],[a,b]=next;open.add(`${x},${y}:${a},${b}`);open.add(`${a},${b}:${x},${y}`);seen.add(`${a},${b}`);stack.push(next)}
+      let walls="";for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){const px=x0+x*cell,py=y0+y*cell;if(!open.has(`${x},${y}:${x+1},${y}`))walls+=`M${px+cell} ${py}v${cell}`;if(!open.has(`${x},${y}:${x},${y+1}`))walls+=`M${px} ${py+cell}h${cell}`}
+      const room=(x,y,label)=>`<rect x="${x}" y="${y}" width="92" height="38" rx="2"/><text x="${x+12}" y="${y+24}">${esc(label)}</text>`;
+      const threads=sessions.slice(0,7).map((s,i)=>{let x=x0+8,y=y0+13+i*4,d=Math.max(1,Math.min(Number(s.depth)||1,18)),p=`M305 ${70+i*8}H${x}`;for(let n=0;n<d;n++){x+=cell*(n%3===2?-1:1);if(x>x0+w-20)x-=cell*2;y+=n%2?cell:-cell/2;y=Math.max(y0+8,Math.min(y0+h-8,y));p+=`L${x} ${y}`}return`<path d="${p}" class="thread-path"/><circle cx="${x}" cy="${y}" r="4"/>`}).join("");
+      const label=`${sessions.length} agents entered; ${sessions.filter(s=>s.outcome==="stopped").length} stopped; deepest at depth ${Math.max(0,...sessions.map(s=>s.depth||0))}`;
+      return `<svg viewBox="0 0 880 285" role="img" aria-label="${esc(label)}" style="width:100%;min-height:260px"><defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#2f3f8f" opacity=".2"/></pattern></defs><rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="url(#hatch)" stroke="#2f3f8f"/><g fill="#f7f9f7" stroke="#18202b">${room(18,36,"/robots.txt")}${room(130,36,"/debug")}${room(242,36,"/admin")}${room(18,108,"/")}${room(130,182,"/search")}</g><path d="M110 55H130M222 55H242M64 74V108M110 127H305" fill="none" stroke="#c3ccc7" stroke-width="7"/><path d="M110 55H130M222 55H242M64 74V108M110 127H305" fill="none" stroke="#cf3b2c" stroke-width="2"/><path d="M330 15v255" stroke="#18202b" stroke-width="5"/><text x="286" y="145" font-size="9">trap door</text><path d="${walls}" fill="none" stroke="#2f3f8f"/><g fill="none" stroke="#cf3b2c" stroke-width="2">${threads}</g><text x="18" y="278">Your site</text><text x="355" y="278" fill="#2f3f8f">The Labyrinth — fabricated pages</text></svg>`
     }
-    function renderState(){
-      const k=state.kpis||{};
-      byId("requestsKpi").textContent=k.requests||0;byId("sessionsKpi").textContent=k.flagged_sessions||0;
-      byId("depthKpi").textContent=k.maze_depth||0;byId("reuseKpi").textContent=k.credential_reuse||0;
-      byId("confidenceKpi").textContent=Math.round((k.analyst_confidence||0)*100)+"%";
-      byId("updated").textContent="Updated "+new Date().toLocaleTimeString();
-      setChip("victimStatus",state.events.some(e=>!e.session));setChip("analystStatus",state.analyses.length);
-      const findings=[];
-      if(k.credential_reuse)findings.push(`${k.credential_reuse} honeytoken reuse event(s) require review.`);
-      if(k.maze_depth)findings.push(`An attacker reached maze depth ${k.maze_depth}.`);
-      const latest=state.analyses[0]?.analysis;if(latest?.summary)findings.push(latest.summary);
-      byId("attention").innerHTML=(findings.length?findings:["No active high-priority findings."]).map(x=>`<li>${esc(x)}</li>`).join("");
-      byId("sessions").innerHTML=state.sessions.map(s=>`<button class="session ${selected===s.session?"active":""}" data-session="${esc(s.session)}"><b class="mono">${esc(s.session)}</b><br><small>${esc(s.reason)} · depth ${s.depth} · ${s.credential_reuse} reused</small></button>`).join("")||'<span class="empty">No flagged sources.</span>';
-      byId("sessions").querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>selectSession(button.dataset.session)));
-      byId("events").innerHTML=state.events.slice(0,50).map(e=>`<tr><td class="mono">${esc(fmtTime(e.ts))}</td><td class="mono">${esc(e.method)}</td><td class="mono">${esc(e.normalized_path||e.path)}</td><td>${esc(e.status)}</td><td class="${e.route_type==="credential_reuse"?"danger":e.route_type==="trap"?"amber":""}">${esc(e.route_type||e.kind)}</td><td class="mono">${esc(e.latency_ms||0)} ms</td></tr>`).join("")||empty("Waiting for traffic.");
-      renderCharts();
+    function overview(){
+      shell("overview");const s=app.state,k=s.kpis||{},sessions=s.sessions||[],events=s.events||[];
+      $("#view").innerHTML=`<div class="eyebrow">Live protection data</div><h1 class="hero">${sessions.length?`${sessions.length} agent${sessions.length===1?"":"s"} caught. None reached a real page after the catch.`:"No agents caught yet."}</h1><p class="lede">${sessions.length?"Caught sources are served isolated, fabricated pages while their requests remain visible here.":"The console is listening for trap and canary signals."}</p>
+      <div class="ledger"><div class="metric"><small>agent sessions seen</small><strong>${k.flagged_sessions||0}</strong></div><div class="metric"><small>median requests until caught</small><strong>${dash(s.median_requests_to_flag)}</strong></div><div class="metric"><small>stopped at the truth banner</small><strong>${s.stopped_count||0}</strong></div><div class="metric"><small>requests observed</small><strong>${k.requests||0}</strong></div><div class="metric"><small>real pages served after a catch</small><strong>0</strong></div></div>
+      <section class="panel overview-map"><h2 class="panel-title">Where today's agents went <span class="map-key"><i></i>agent path &nbsp; <i class="fabricated"></i>fabricated</span></h2>${mazeSvg(sessions)}</section>
+      <div class="grid"><section><div class="section-head"><h2>Agents</h2><a href="#/sessions">Open a replay</a></div><div class="table-wrap"><table><thead><tr><th>Session</th><th>Caught by</th><th>Depth</th><th>Now</th></tr></thead><tbody>${sessions.map(x=>`<tr><td><a class="mono" href="#/sessions/${esc(x.session)}">${esc(x.session)}</a></td><td>${esc(x.reason)}</td><td>${x.depth||0}</td><td class="${x.status==="in-maze"?"indigo":""}">${esc(x.status)}</td></tr>`).join("")||empty("No flagged sessions.",4)}</tbody></table></div></section>
+      <aside><div class="section-head"><h2>Latest</h2></div><ul class="feed">${events.slice(0,7).map(e=>`<li><time>${fmtTime(e.ts)}</time><span>${mono((e.session||"visitor").slice(0,4))} ${esc(e.method)} ${mono(e.normalized_path||e.path)}</span></li>`).join("")||'<li class="empty">Waiting for traffic.</li>'}</ul></aside></div>`;
     }
-    function renderDetail(d){
-      detail=d;const a=d.analysis?.analysis||{},m=d.metadata||{};
-      byId("rules").innerHTML=(a.block_rules||[]).map(r=>`<tr><td class="danger">${esc(r.action)}</td><td class="mono">${esc(r.path)}</td></tr>`).join("")||empty("No block rules.",2);
-      byId("bait").innerHTML=(d.bait||[]).map(b=>`<tr><td class="mono">${esc(b.path)}</td><td>${esc(b.spec?.page_type||"bait")}</td></tr>`).join("")||empty("No bait deployed.",2);
-      const rows=[
-        ["User-Agent",m.user_agent],["Source fingerprint",m.source_fingerprint],["First seen",m.first_seen],
-        ["Last seen",m.last_seen],["Request rate",`${m.requests_per_minute||0} / min`],["Unique paths",m.unique_paths],
-        ["Status distribution",JSON.stringify(m.status_distribution||{})],["Transcript",m.matched_transcript?.run_id||"Not linked"]
-      ];
-      byId("metadata").innerHTML=rows.map(([label,value])=>`<div class="datum"><span>${esc(label)}</span><b>${esc(value||"—")}</b></div>`).join("");
-      if(m.matched_transcript)loadRun(m.matched_transcript.run_id);else{byId("trace").innerHTML='<div class="empty">No matching transcript for this User-Agent.</div>';byId("rawTranscript").textContent="No transcript loaded."}
+    async function loadSession(id){app.detail=await api("session/"+encodeURIComponent(id));const runId=app.detail.metadata?.matched_transcript?.run_id;app.run=runId?await api("run/"+encodeURIComponent(runId)):null}
+    function reasoningFor(index){const rows=(app.run?.rows||[]).filter(r=>r.type==="step"||r.type==="assistant");return rows[Math.min(index,Math.max(0,rows.length-1))]?.reasoning||rows[Math.min(index,Math.max(0,rows.length-1))]?.content||""}
+    function sessionsView(id){
+      shell("sessions");const all=app.state.sessions||[],chosen=id||all[0]?.session;if(!chosen){$("#view").innerHTML='<div class="empty">No sessions have been caught.</div>';return}
+      if(!app.detail||app.detail.session.session!==chosen){$("#view").innerHTML='<div class="empty">Loading session…</div>';loadSession(chosen).then(()=>sessionsView(chosen)).catch(e=>toast(e.message));return}
+      const d=app.detail,m=d.metadata||{},events=d.events||[],trap=Math.max(0,events.findIndex(e=>e.route_type==="trap")),selected=events[app.selectedStep]||events[0],analysis=d.analysis?.analysis||{};
+      $("#view").innerHTML=`<div class="crumb"><a href="#/sessions">Sessions</a> &nbsp;/&nbsp; ${mono(chosen)}</div><h1 class="hero">${events.length?`It made ${events.length} requests${d.depth?`, then followed the trap into the maze.`:"."}`:"This source was flagged before making a recorded request."}</h1>
+      <div class="facts"><div><small>Caught by</small><b>${esc(d.session.reason)}</b></div><div><small>Outcome</small><b>${esc(all.find(x=>x.session===chosen)?.outcome||"flagged")}</b></div><div><small>Maze depth</small><b>${d.depth||0}</b></div><div><small>Fingerprint</small><b class="mono">${esc(m.source_fingerprint)}</b></div></div>
+      <div class="button-row"><a class="btn primary" href="#/labyrinth/${esc(chosen)}">Open the maze</a></div><div class="grid"><section><h2>The thread</h2><p class="eyebrow">Every request, in order. Choose a step to inspect it.</p><div class="thread">${events.map((e,i)=>`${i===trap?'<div class="trap-wall">Caught here. Every step below was fabricated.</div>':""}<button class="step ${i===app.selectedStep?"selected":""} ${i>=trap&&trap>=0?"fabricated":""}" data-step="${i}"><time>${fmtTime(e.ts)}</time><span>${mono(`${e.method} ${e.normalized_path||e.path}`)}<small>${esc(e.route_type||e.kind)}</small></span></button>`).join("")||'<div class="empty">No request events.</div>'}</div></section>
+      <aside class="panel inspector"><h2>Step ${String(app.selectedStep+1).padStart(2,"0")}</h2><p class="quote">“${esc(reasoningFor(app.selectedStep)||"No linked model reasoning was recorded for this step.")}”</p><div class="request-pair"><div><b>It asked for</b><pre>${esc(selected?`${selected.method} ${selected.path}`:"—")}</pre></div><div><b>We served</b><pre id="servedPreview">${selected&&["trap","maze","credential_reuse"].includes(selected.route_type)?"Loading stored page…":"—"}</pre>${selected&&["trap","maze","credential_reuse"].includes(selected.route_type)?`<button class="served-link" id="viewServed" type="button">View page</button>`:""}</div></div><div class="analyst-note"><b>Analyst</b><p>${esc(analysis.summary||"No analyst note yet.")}</p></div></aside></div>
+      <div class="split"><section><div class="section-head"><h2>Suggested block rules</h2></div><table><tbody>${(analysis.block_rules||d.rules||[]).map(r=>`<tr><td>${mono(r.path)}</td><td>${esc(r.action)}</td></tr>`).join("")||empty("No suggested rules.",2)}</tbody></table></section><section><div class="section-head"><h2>Ask the analyst</h2></div><p id="answer">${esc(analysis.summary||"Ask a question about this session.")}</p><form class="ask" id="ask"><label for="question" hidden>Question</label><input id="question" placeholder="What was it after?"><button class="btn primary">Ask</button></form></section></div>`;
+      $$(".step").forEach(b=>b.onclick=()=>{app.selectedStep=Number(b.dataset.step);sessionsView(chosen)});$("#ask").onsubmit=askAnalyst;
+      if(selected&&["trap","maze","credential_reuse"].includes(selected.route_type)){const path=selected.path?.split("?")[0]||selected.normalized_path;api(`session/${encodeURIComponent(chosen)}/page?path=${encodeURIComponent(path)}`).then(x=>{$("#servedPreview").textContent=pageSummary(x);$("#viewServed").onclick=()=>openPage(path,x)}).catch(()=>$("#servedPreview").textContent="—")}
     }
-    async function selectSession(id){
-      selected=id;document.querySelectorAll(".session").forEach(x=>x.classList.toggle("active",x.dataset.session===id));
-      const response=await fetch("/_counterprompt/api/session/"+encodeURIComponent(id));
-      if(response.ok)renderDetail(await response.json());
+    async function askAnalyst(e){e.preventDefault();const q=$("#question").value.trim();if(!q)return;$("#answer").textContent="Analyzing…";try{$("#answer").textContent=(await api("ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q,session:app.detail.session.session})})).answer}catch(x){$("#answer").textContent=x.message}}
+    function labyrinth(id){
+      shell("labyrinth");const chosen=id||app.state.sessions?.[0]?.session;if(!chosen){$("#view").innerHTML='<div class="empty">No labyrinth exists until a source is caught.</div>';return}
+      if(!app.detail||app.detail.session.session!==chosen){$("#view").innerHTML='<div class="empty">Loading labyrinth…</div>';loadSession(chosen).then(()=>labyrinth(chosen)).catch(e=>toast(e.message));return}
+      const d=app.detail,paths=[...new Set((d.events||[]).filter(e=>["trap","maze","credential_reuse"].includes(e.route_type)).map(e=>e.normalized_path||e.path))],bait=new Set((d.bait||[]).map(x=>x.path)),selected=app.room||paths[0],credentials=d.world?.credentials||[];
+      $("#view").innerHTML=`<div class="crumb">Labyrinth for session ${mono(chosen)}</div><h1 class="hero">This world isn't real. This agent is ${d.depth||0} page${d.depth===1?"":"s"} deep.</h1><div class="ledger"><div class="metric"><small>pages deep</small><strong>${d.depth||0}</strong></div><div class="metric"><small>rooms visited</small><strong>${paths.length}</strong></div><div class="metric"><small>fake keys tried</small><strong>${d.metadata?.honeytoken_reuse_count||0}</strong></div></div>
+      <div class="split"><section><h2>Floor plan of the world it walked</h2><div class="floor">${paths.map((p,i)=>`<button class="room ${bait.has(p)?"bait":""} ${i===paths.length-1&&d.metadata?.honeytoken_reuse_count?"used":""} ${p===selected?"active":""}" data-path="${esc(p)}"><small>room ${i+1}</small><br>${mono(p)}</button>`).join("")||'<div class="empty">No fabricated rooms visited yet.</div>'}</div></section><section><h2>What it saw</h2><div class="browser"><div class="browser-bar">${mono(selected||"No room selected")}<button class="source-toggle" id="sourceToggle" type="button">Show source</button></div><iframe id="pagePreview" title="Fabricated page preview" sandbox=""></iframe><pre class="source-preview" id="pageSource" hidden></pre></div><p class="eyebrow">Stored for this session alone. No other visitor is served this world.</p></section></div>
+      <div class="split"><section><div class="section-head"><h2>Fake keys planted in this world</h2></div><table><thead><tr><th>Account</th><th>Password</th><th>Used</th></tr></thead><tbody>${credentials.map(c=>`<tr><td>${mono(c.username)}</td><td>${mono(c.password)}</td><td>${d.metadata?.honeytoken_reuse_count?"observed":"not yet"}</td></tr>`).join("")||empty("No world credentials available.",3)}</tbody></table></section><section><div class="section-head"><h2>How the maze stays safe</h2></div><div class="notice">It never forwards a caught agent to a real system.</div><div class="notice">Scripts are stripped and pages stop at 100,000 characters.</div><div class="notice">The agent's words reach our model as data, never as instructions.</div></section></div>`;
+      $$(".room").forEach(b=>b.onclick=()=>{app.room=b.dataset.path;labyrinth(chosen)});$("#sourceToggle").onclick=()=>{const source=$("#pageSource"),showing=!source.hidden;source.hidden=showing;$("#sourceToggle").textContent=showing?"Show source":"Hide source"};if(selected)api(`session/${encodeURIComponent(chosen)}/page?path=${encodeURIComponent(selected)}`).then(x=>{$("#pagePreview").srcdoc=x;$("#pageSource").textContent=x}).catch(e=>$("#pageSource").textContent=e.message);
     }
-    async function loadRun(id){
-      currentRun=id;
-      const run=await fetch("/_counterprompt/api/run/"+encodeURIComponent(id)).then(r=>r.json()),steps=(run.rows||[]).filter(x=>x.type==="step"||x.type==="assistant");
-      setChip("attackerStatus",true);
-      byId("trace").innerHTML=steps.map((s,index)=>{
-        const calls=s.tool_calls||[],results=s.tool_results||[],action=calls.map(c=>`${c.function?.name||c.name} ${c.function?.arguments||""}`).join("; ")||"No tool action";
-        const result=results.map(x=>x.result?.status?`${x.result.status} · ${(x.result.body||"").length} bytes`:x.name||"").join("; ");
-        const usage=s.usage||{},tokens=(usage.total_tokens||(usage.prompt_tokens||0)+(usage.completion_tokens||0));
-        return `<div class="trace-step"><div class="step-no">STEP ${String(s.step||index+1).padStart(2,"0")}</div><div><p>${esc(s.reasoning||s.content||"Reasoning not returned by provider.")}</p><div class="action">${esc(action)}</div><p>${esc(result)}</p></div><div class="trace-stat">${esc(s.latency_ms||0)} ms<br>${esc(tokens)} tokens</div></div>`;
-      }).join("")||'<div class="empty">This run contains no model steps.</div>';
-      byId("rawTranscript").textContent=JSON.stringify(run.rows||[],null,2);
+    function canaries(){
+      shell("canaries");const rows=app.canaries,selected=rows.find(x=>x.id===app.canary)||rows[0];
+      $("#view").innerHTML=`<div class="eyebrow">Canaries on the protected target</div><h1 class="hero">Text only agents read, and only attackers follow.</h1><p class="lede">Each canary is hidden from ordinary page presentation. Its live hit count comes from recorded request signals.</p><section><div class="section-head"><h2>${rows.length} canaries</h2></div><div class="table-wrap"><table class="canary-table"><thead><tr><th>Canary</th><th>What it asks of an agent</th><th>Hidden on</th><th>Hits</th><th>State</th></tr></thead><tbody>${rows.map(c=>`<tr class="${selected?.id===c.id?"active":""}" data-canary="${esc(c.id)}"><td><button class="btn" data-canary="${esc(c.id)}">${esc(c.name)}</button></td><td>${esc(c.prompt)}</td><td>${mono(c.hidden_on)}</td><td>${c.hits}</td><td>${esc(c.state)}</td></tr>`).join("")||empty("No canaries configured.",5)}</tbody></table></div></section>${selected?`<section><h2>${esc(selected.name)}</h2><div class="comparison"><div><h3>What a person sees</h3><pre>${esc(selected.person_view)}</pre></div><div><h3>What an agent reads</h3><pre class="agent-copy">${esc(selected.agent_view)}</pre></div></div></section>`:""}`;
+      $$("[data-canary]").forEach(x=>x.onclick=()=>{app.canary=x.dataset.canary;canaries()});
     }
-    byId("rawDetails").addEventListener("toggle",async event=>{
-      if(!event.target.open||!currentRun)return;
-      const run=await fetch("/_counterprompt/api/run/"+encodeURIComponent(currentRun)+"?details=true").then(r=>r.json());
-      byId("rawTranscript").textContent=JSON.stringify(run.rows||[],null,2);
-    });
-    async function refresh(){
-      try{
-        state=await fetch("/_counterprompt/api/state").then(r=>r.json());renderState();
-        if(!selected&&state.sessions[0])await selectSession(state.sessions[0].session);
-      }catch(error){byId("updated").textContent="Refresh failed"}
+    function scoreboard(){
+      shell("scoreboard");const rows=app.scoreboard,max=Math.max(1,...rows.map(r=>r.max_maze_depth||0));
+      $("#view").innerHTML=`<div class="eyebrow">Deterrence Scoreboard</div><h1 class="hero">Does an AI attacker stop when it's told the truth?</h1><p class="lede">Every row below is a recorded run. Missing banner and self-identification signals remain unscored.</p><section class="panel"><h2>Recorded runs, drawn as threads</h2><div class="threads">${rows.map(r=>`<div class="run-line"><b>${esc(r.model)}</b><div class="track"><i style="width:${Math.max(2,(r.max_maze_depth||0)/max*100)}%"></i></div><small>depth ${r.max_maze_depth||0}</small></div>`).join("")||'<div class="empty">No recorded runs.</div>'}</div></section><section><div class="section-head"><h2>The numbers behind the threads</h2></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>Runs</th><th>Stopped at banner</th><th>Named itself</th><th>Trap reached</th><th>Requests</th><th>Maze depth</th><th>Spend</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.model)}</b></td><td>${r.runs}</td><td>—</td><td>—</td><td>${r.trap_result?"yes":"no"}</td><td>${r.requests}</td><td>${r.max_maze_depth||0}</td><td>$${Number(r.estimated_cost||0).toFixed(4)}</td></tr>`).join("")||empty("No transcript files found.",8)}</tbody></table></div></section>`;
     }
-    async function refreshScore(){
-      const x=await fetch("/_counterprompt/api/scoreboard").then(r=>r.json()),rows=x.scoreboard||[];
-      byId("costKpi").textContent="$"+rows.reduce((n,s)=>n+(s.estimated_cost||0),0).toFixed(4);
-      byId("scoreboard").innerHTML=rows.map(s=>`<tr><td>${esc(s.model)}</td><td>${s.runs}</td><td>${s.steps}</td><td>${s.trap_result?"Reached":"—"}</td><td class="mono">$${Number(s.estimated_cost||0).toFixed(4)}</td></tr>`).join("")||empty("No recorded runs.",5);
-      setChip("attackerStatus",rows.length);
+    const stageScenes=[["Scene 1 — The boundary","A machine-readable truth banner gives an agent one honest chance to stop."],["Scene 2 — The catch","Canaries identify behavior ordinary users never perform. The source crosses the trap door once."],["Scene 3 — The Labyrinth","Every page after the catch is fabricated. Real application data is never served again."]];
+    function stage(scene=0){document.body.classList.add("stage-mode");const [title,copy]=stageScenes[scene]||stageScenes[0],quote=reasoningFor(0);$("#stage").innerHTML=`<div class="eyebrow">Counterprompt live demonstration</div><h1>${esc(title)}</h1><p>${esc(scene===2&&quote?`“${quote}”`:copy)}</p><div class="stage-controls">${stageScenes.map((_,i)=>`<button data-scene="${i}">${i+1}</button>`).join("")}<a class="btn" href="#/overview">Exit</a></div>`;$$("[data-scene]").forEach(b=>b.onclick=()=>stage(Number(b.dataset.scene)))}
+    async function route(){
+      clearInterval(app.poll);document.body.classList.remove("stage-mode");const [name="overview",id]=location.hash.replace(/^#\//,"").split("/");
+      if(name==="stage"){stage(0);return}const render={overview,sessions:sessionsView,labyrinth,canaries,scoreboard}[name]||overview;try{render(decodeURIComponent(id||""))}catch(e){toast(e.message)}
+      if(["overview","sessions","labyrinth"].includes(name))app.poll=setInterval(async()=>{try{app.state=await api("state");if(name==="overview")overview()}catch{}},5000);
     }
-    byId("askForm").addEventListener("submit",async event=>{
-      event.preventDefault();const question=byId("question").value.trim();if(!question)return;
-      byId("answer").textContent="Analyzing…";
-      const x=await fetch("/_counterprompt/api/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question,session:selected})}).then(r=>r.json());
-      byId("answer").textContent=x.answer||x.error;
-    });
-    refresh();refreshScore();setInterval(refresh,4000);setInterval(refreshScore,8000);
+    async function boot(){try{[app.state,{scoreboard:app.scoreboard},{canaries:app.canaries}]=await Promise.all([api("state"),api("scoreboard"),api("canaries")]);addEventListener("hashchange",route);if(!location.hash)location.hash="#/overview";else route()}catch(e){$("#view").innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+    boot();
   </script>
 </body>
 </html>

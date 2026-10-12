@@ -1,24 +1,3 @@
 {
-  "rules": [
-    {
-      "action": "block",
-      "path": "/api/admin"
-    },
-    {
-      "action": "block",
-      "path": "/.env"
-    },
-    {
-      "action": "block",
-      "path": "/backup"
-    },
-    {
-      "action": "block",
-      "path": "/backup/users.sql"
-    },
-    {
-      "action": "block",
-      "path": "/internal/audit"
-    }
-  ]
+  "rules": []
 }

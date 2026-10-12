@@ -1,8 +1,10 @@
 import json
 import hashlib
+import os
 import re
 import sqlite3
 import threading
+from statistics import median
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -201,7 +203,30 @@ def dashboard_state():
     confidence = 0
     if analyses and isinstance(analyses[0].get("analysis"), dict):
         confidence = _confidence_value(analyses[0]["analysis"].get("confidence", 0))
+    stopped_count = 0
+    requests_to_flag = []
+    for item in sessions:
+        latest = one(
+            "SELECT user_agent,route_type FROM requests WHERE session=? ORDER BY id DESC LIMIT 1",
+            (item["session"],),
+        ) or {}
+        transcript = find_transcript(latest.get("user_agent", ""))
+        item["status"] = (
+            "in-maze" if item["depth"] else
+            "blocked" if latest.get("route_type") == "blocked" else "stopped"
+        )
+        item["outcome"] = "caught" if item["depth"] else "stopped" if transcript and transcript["refused"] else "flagged"
+        if item["outcome"] == "stopped":
+            stopped_count += 1
+        count = one(
+            "SELECT COUNT(*) n FROM requests WHERE source=? AND ts<=?",
+            (item["source"], item["ts"]),
+        )["n"]
+        requests_to_flag.append(count + 1)
     return {
+        "enabled": os.getenv("COUNTERPROMPT_ENABLED", "true").lower() != "false",
+        "stopped_count": stopped_count,
+        "median_requests_to_flag": median(requests_to_flag) if requests_to_flag else None,
         "sessions": sessions,
         "analyses": analyses,
         "events": events,
@@ -213,6 +238,32 @@ def dashboard_state():
             "analyst_confidence": confidence,
         },
     }
+
+
+def canaries_state():
+    path = ROOT / "middleware" / "canaries.json"
+    try:
+        registry = json.loads(path.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        registry = []
+    counts = {
+        row["signal"]: row["n"]
+        for row in all_rows(
+            """SELECT CASE WHEN kind!='request' THEN kind ELSE route_type END signal,
+            COUNT(*) n FROM requests GROUP BY signal"""
+        )
+    }
+    return [
+        {**item, "hits": sum(counts.get(signal, 0) for signal in item.get("signals", []))}
+        for item in registry
+    ]
+
+
+def maze_page(session, path):
+    return one(
+        "SELECT html,created_at FROM maze_pages WHERE session=? AND path=?",
+        (session, path),
+    )
 
 
 def _json_value(value, fallback):
@@ -281,7 +332,10 @@ def session_state(session):
     flag_row = one("SELECT * FROM flags WHERE session=?", (session,))
     if not flag_row:
         return None
-    world = one("SELECT depth FROM worlds WHERE session=?", (session,)) or {"depth": 0}
+    world_row = one("SELECT depth,json FROM worlds WHERE session=?", (session,)) or {
+        "depth": 0, "json": "{}"
+    }
+    world = _json_value(world_row.pop("json"), {})
     events = all_rows("SELECT * FROM requests WHERE session=? ORDER BY id", (session,))
     analysis = one("SELECT * FROM analyses WHERE session=? ORDER BY id DESC", (session,))
     if analysis:
@@ -312,7 +366,7 @@ def session_state(session):
         "requests_per_minute": round(len(events) / elapsed_minutes, 2),
         "unique_paths": len({event.get("normalized_path") or event["path"] for event in events}),
         "status_distribution": statuses,
-        "maze_depth": world["depth"],
+        "maze_depth": world_row["depth"],
         "user_agent": user_agent,
         "source_fingerprint": source_fingerprint,
         "honeytoken_reuse_count": sum(event["kind"] == "credential_reuse" for event in events),
@@ -321,7 +375,8 @@ def session_state(session):
     rules = (analysis or {}).get("analysis", {}).get("block_rules", [])
     return {
         "session": flag_row,
-        "depth": world["depth"],
+        "depth": world_row["depth"],
+        "world": world,
         "events": events,
         "analysis": analysis,
         "bait": bait_rows,

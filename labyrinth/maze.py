@@ -14,6 +14,13 @@ from middleware import store
 ROOT = Path(__file__).resolve().parents[1]
 fake = Faker()
 SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.I | re.S)
+FENCE_START_RE = re.compile(r"^\s*```(?:html)?[ \t]*(?:\r?\n|$)", re.I)
+FENCE_END_RE = re.compile(r"(?:\r?\n)?[ \t]*```\s*$")
+
+
+def strip_markdown_fences(page):
+    page = FENCE_START_RE.sub("", page, count=1)
+    return FENCE_END_RE.sub("", page, count=1)
 
 
 def _world(session):
@@ -95,7 +102,7 @@ def render(session, method, path, body="", headers=None, prewarming=False):
     if method == "GET":
         cached = store.one("SELECT html FROM maze_pages WHERE session=? AND path=?", (session, path))
         if cached:
-            return cached["html"], 200, reused
+            return strip_markdown_fences(cached["html"]), 200, reused
     spec = _bait(path, session)
     try:
         page = _generated(path, method, body, world, spec)
@@ -103,7 +110,7 @@ def render(session, method, path, body="", headers=None, prewarming=False):
             raise RuntimeError("empty model response")
     except Exception:
         page = fallback_page(path, world, reused, spec)
-    page = SCRIPT_RE.sub("", page)[:100_000]
+    page = SCRIPT_RE.sub("", strip_markdown_fences(page))[:100_000]
     store.execute(
         "INSERT OR REPLACE INTO maze_pages(session,path,html,created_at) VALUES(?,?,?,?)",
         (session, path, page, store.now()),

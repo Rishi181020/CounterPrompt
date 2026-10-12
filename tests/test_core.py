@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from attacker.harness import http_request
-from labyrinth.maze import SCRIPT_RE
+from labyrinth.maze import SCRIPT_RE, strip_markdown_fences
 from middleware.analyst import _valid_rules
 from middleware.analyst_llm import _first_json
 from middleware import store
@@ -18,6 +19,7 @@ def main():
     assert http_request("GET", "http://example.com")["refused"] is True
     assert _first_json('prefix {"safe": true} suffix') == {"safe": True}
     assert SCRIPT_RE.sub("", "<p>ok</p><script>alert(1)</script>") == "<p>ok</p>"
+    assert strip_markdown_fences("```html\n<p>ok</p>\n```") == "<p>ok</p>"
     rules = {"block_rules": [
         {"action": "block", "path": "/seen"},
         {"action": "allow", "path": "/seen"},
@@ -46,6 +48,23 @@ def main():
     assert len(meta["body_excerpt"]) <= 240
     assert "very-secret-value" not in meta["body_excerpt"]
     assert body.decode() not in meta["body_excerpt"]
+    canaries = store.canaries_state()
+    assert len(canaries) == 5
+    assert all(isinstance(item["hits"], int) for item in canaries)
+    assert next(item for item in canaries if item["id"] == "trap-path")["state"] == "live"
+    previous_offline = os.environ.get("COUNTERPROMPT_OFFLINE")
+    os.environ["COUNTERPROMPT_OFFLINE"] = "1"
+    try:
+        from middleware.proxy import app
+    finally:
+        if previous_offline is None:
+            os.environ.pop("COUNTERPROMPT_OFFLINE", None)
+        else:
+            os.environ["COUNTERPROMPT_OFFLINE"] = previous_offline
+    client = app.test_client()
+    remote = {"REMOTE_ADDR": "203.0.113.5"}
+    assert client.get("/_counterprompt/api/session/missing/page?path=/", environ_base=remote).status_code == 401
+    assert client.get("/_counterprompt/api/session/missing/page?path=/").status_code == 404
 
     user_agent = "CounterpromptTest/link-check"
     run_dir = ROOT / "data" / "runs"

@@ -1,4 +1,6 @@
 import argparse
+import base64
+import hmac
 import hashlib
 import json
 import os
@@ -12,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 import requests
 from flask import Flask, Response, jsonify, request, send_file
 
-from labyrinth.maze import render
+from labyrinth.maze import render, strip_markdown_fences
 from middleware import store
 from middleware.analyst import maybe_analyze, start_worker
 from middleware.analyst_llm import ask
@@ -41,7 +43,39 @@ def flag(source, reason="manual"):
     return store.flag(source, reason)
 
 
+def _console_authorized():
+    if request.remote_addr in {"127.0.0.1", "::1"}:
+        return True
+    expected = os.getenv("CONSOLE_TOKEN", "")
+    if not expected:
+        return False
+    supplied = request.headers.get("X-Console-Token", "")
+    authorization = request.headers.get("Authorization", "")
+    if authorization.startswith("Bearer "):
+        supplied = authorization[7:]
+    elif authorization.startswith("Basic "):
+        try:
+            supplied = base64.b64decode(authorization[6:]).decode().partition(":")[2]
+        except (ValueError, UnicodeDecodeError):
+            supplied = ""
+    return hmac.compare_digest(supplied, expected)
+
+
+@app.before_request
+def console_auth():
+    is_console = request.path in {"/_counterprompt", "/_counterprompt/"}
+    is_api = request.path == "/_counterprompt/api" or request.path.startswith("/_counterprompt/api/")
+    if is_console or is_api:
+        if not _console_authorized():
+            return Response(
+                "Console access requires localhost or CONSOLE_TOKEN.",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Counterprompt console"'},
+            )
+
+
 @app.get("/_counterprompt")
+@app.get("/_counterprompt/")
 def dashboard():
     return send_file(ROOT / "dashboard" / "index.html")
 
@@ -55,6 +89,25 @@ def state():
 def session_detail(session):
     result = store.session_state(session)
     return (jsonify(result), 200) if result else (jsonify(error="session not found"), 404)
+
+
+@app.get("/_counterprompt/api/session/<session>/page")
+def session_page(session):
+    path = request.args.get("path", "")
+    if not path.startswith("/"):
+        return jsonify(error="path must begin with /"), 400
+    if not store.session_state(session):
+        return jsonify(error="session not found"), 404
+    result = store.maze_page(session, path)
+    return (
+        Response(strip_markdown_fences(result["html"]), content_type="text/html")
+        if result else (jsonify(error="page not found"), 404)
+    )
+
+
+@app.get("/_counterprompt/api/canaries")
+def canaries():
+    return jsonify(canaries=store.canaries_state())
 
 
 @app.get("/_counterprompt/api/run/<run_id>")

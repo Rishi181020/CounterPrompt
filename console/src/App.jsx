@@ -6,6 +6,7 @@ import { Session } from "./pages/Session";
 import { Analyst } from "./pages/Analyst";
 import { Canaries } from "./pages/Canaries";
 import { Team } from "./pages/Team";
+import { Triage } from "./pages/Triage";
 
 const Console = createContext(null);
 export function useConsole() {
@@ -18,6 +19,7 @@ const links = [
   ["analyst", "Analyst"],
   ["canaries", "Canaries"],
   ["team", "Team"],
+  ["triage", "Triage"],
 ];
 
 function Frame() {
@@ -58,6 +60,9 @@ function Frame() {
     function connect() {
       const scheme = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${scheme}://${location.host}/_counterprompt/ws`);
+      const ping = setInterval(() => {
+        if (ws.readyState === 1) ws.send("ping");
+      }, 10000);
       ws.onopen = () => {
         stopPolling();
         setError("");
@@ -70,6 +75,7 @@ function Frame() {
         } catch { /* ignore malformed frames */ }
       };
       ws.onclose = () => {
+        clearInterval(ping);
         if (closed) return;
         startPolling();
         retry = setTimeout(connect, 3000);
@@ -114,6 +120,7 @@ function Frame() {
           <Route path="/analyst/:id?" element={<Analyst />} />
           <Route path="/canaries" element={<main><Canaries /></main>} />
           <Route path="/team" element={<main><Team /></main>} />
+          <Route path="/triage" element={<main><Triage /></main>} />
         </Routes>
       )}
     </Console.Provider>

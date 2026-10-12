@@ -30,6 +30,7 @@ export function Overview() {
       </div>
       <section className="panel overview-map">
         <h2>Where the agents went</h2>
+        <p className="panel-sub">Replayed from the proxy log: the real pages the agent requested, the request that tripped the trap, then every fabricated page it was served instead. Hover any step for its URL and time.</p>
         <MazeMap sessions={sessions} />
       </section>
       <div className="grid">
@@ -52,6 +53,8 @@ export function Overview() {
           </div>
         </section>
         <aside>
+          <div className="section-head"><h2>Support agent</h2><Link to="/support">Open chat log</Link></div>
+          <p className="panel-sub">Live turns through the site&apos;s AI assistant, with blocked and redacted replies highlighted.</p>
           <div className="section-head"><h2>Latest</h2></div>
           <ul className="feed">
             {events.slice(0, 7).map((event) => (

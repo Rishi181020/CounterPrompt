@@ -13,6 +13,7 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#support-agent-defense">Support agent defense</a> ·
   <a href="#the-console">Console</a> ·
   <a href="#deterrence-scoreboard">Scoreboard</a> ·
   <a href="#roadmap">Roadmap</a> ·
@@ -21,7 +22,11 @@
 
 ---
 
-AI agents read everything on a page and often act on what they read. Attackers exploit that through prompt injection. **Counterprompt turns the same weakness against AI attackers.** It plants traps that only an agent would trip, leads the agent into an endless LLM-generated maze full of fake credentials, records every move, and turns the session into an incident report with block rules.
+AI agents read everything on a page and often act on what they read. Attackers exploit that through prompt injection. **CounterPrompt defends against it from both sides.**
+
+**Protecting your own AI agent.** CounterPrompt watches every conversation with your site's AI support agent. It scans the user's message, any attached document, and the results the agent's tools bring back for hidden instructions, blocks injection attempts before they reach the model, and holds back any reply that would leak a secret. Every turn is logged with what was caught and where it came from.
+
+**Turning the weakness against AI attackers.** It plants traps that only an agent would trip, leads the agent into an endless LLM-generated maze full of fake credentials, records every move, and turns the session into an incident report with block rules.
 
 It runs as a reverse proxy in front of the app you want to protect. Clean traffic passes through untouched. A flagged source never reaches the real app again.
 
@@ -30,6 +35,7 @@ It runs as a reverse proxy in front of the app you want to protect. Clean traffi
 - [Highlights](#highlights)
 - [Why this exists](#why-this-exists)
 - [How it works](#how-it-works)
+- [Support agent defense](#support-agent-defense)
 - [Quickstart](#quickstart)
 - [Configuration](#configuration)
 - [The console](#the-console)
@@ -45,13 +51,14 @@ It runs as a reverse proxy in front of the app you want to protect. Clean traffi
 
 | | Feature | What it does |
 |---|---|---|
+| 🛡️ | **Support agent shield** | Every `/api/assistant` turn is scanned for injected instructions in three places: the chat message, an attached document, and the agent's tool results. Direct and document injections are blocked before they reach the model; replies that leak the planted credential or use internal tools are withheld. Each turn is logged with its source (`direct`, `document`, `tool_result`). |
 | 🪤 | **Trap path** | `robots.txt` tells crawlers to stay out of `/internal/`. Humans never go there. An agent hunting for "internal paths" does, and the first request flags its source. |
 | 🌀 | **Labyrinth** | Each flagged source gets its own fictional company (employees, hosts, services) and an endless supply of LLM-generated internal pages built around it. Pages stay consistent per session and every one deepens the maze. |
 | 🍯 | **Honeytokens** | Each maze world plants per-session service-account credentials. When the attacker presents one, the proxy logs a `credential_reuse` event, which gives you a near-zero-false-positive signal. |
 | ✂️ | **Cut-off** | Once flagged, a source is served only fabricated pages. The real app never sees another request from it. |
 | 🧠 | **AI analyst** | After 10 requests or 30 seconds of silence, an analyst model writes an incident report covering goal, kill-chain stages, attribution, block rules and next bait. If no model is configured, a heuristic analyst does the same job. |
-| 📊 | **Executive console** | Live KPIs, the attacker's action timeline, the model's own reasoning trace (when linked to a harness run), session fingerprint, and an "Ask the analyst" box. |
-| 🤖 | **Attacker simulator** | An LLM agent with an HTTP tool and an "it's only a CTF" prompt, hard-limited to localhost. A deterministic scripted attacker is included for demos and offline runs. |
+| 📊 | **Executive console** | Live KPIs, the maze replay of each caught agent's real request trail, the support chat transcript and telemetry, the attacker's action timeline, the model's own reasoning trace (when linked to a harness run), session fingerprint, and an "Ask the analyst" box. |
+| 🤖 | **Attacker agents** | LLM agents (OpenRouter) hard-limited to localhost: one talks to the support assistant, one crawls the site for secrets. Launch them from the Streamlit demo or `attacker/harness.py`. |
 
 ## Why this exists
 
@@ -84,7 +91,7 @@ flowchart LR
     DB --> C["Console<br/>/_counterprompt"]
 ```
 
-A typical attack, as recorded by the scripted attacker:
+A typical crawling attack, as recorded by an attacker agent:
 
 ```mermaid
 sequenceDiagram
@@ -122,7 +129,30 @@ Every request is tagged with a route type, which the console colors and the anal
 | `trap` | The request that tripped the trap and flagged the source |
 | `maze` | Served by the Labyrinth to a flagged source |
 | `credential_reuse` | A request that presented one of the session's honeytokens |
+| `prompt_injection` | An injected instruction found in a support chat message, attached document or tool result |
+| `tool_misuse` / `credential_exfil` | The site's support agent used a tool on internal data or leaked the planted credential |
 | `manual_flag` | A source flagged by hand via `POST /_counterprompt/flag` |
+
+## Support agent defense
+
+The demo victim includes **Ray**, a live LLM support assistant at `POST /api/assistant` with two tools (`lookup_order`, `read_doc`). It runs on OpenRouter (`VICTIM_MODEL`, default `meta-llama/llama-3.1-8b-instruct`, a small model chosen because it is easy to inject). Without `OPENROUTER_API_KEY`, or with `VICTIM_AGENT=heuristic`, it falls back to a rule-based bot.
+
+```json
+POST /api/assistant
+{"message": "Where is order A-1001?", "document": "optional text the customer attaches (ticket, email, file)"}
+```
+
+The optional `document` is passed to the model wrapped in explicit `UNTRUSTED ATTACHED DOCUMENT` markers. The response includes `reply`, `tools_used`, `tool_results`, `backend` and `model`.
+
+CounterPrompt inspects every turn in the proxy:
+
+| Vector | What is scanned | Enforcement |
+|---|---|---|
+| `direct` | The user's chat message | Blocked at the gate (the model never sees it) when the shield is on |
+| `document` | The attached document | Blocked at the gate when the shield is on |
+| `tool_result` | The agent's reply and tool results | Flagged and logged |
+
+Independently, a reply that leaks the planted credential or shows internal tool use is withheld before delivery (`CP_AGENT_SHIELD=off` switches to observe-only). Every turn is stored in the `support_chats` table with the verdict, action and vector, and is shown in the console's **Support** tab.
 
 ## Quickstart
 
@@ -143,27 +173,25 @@ python victim_app/app.py                                              # :5001, p
 python middleware/proxy.py --upstream http://localhost:5001 --port 8080
 ```
 
-Open the console at **http://localhost:8080/_counterprompt**, then attack the proxy from a third terminal:
+Start the console dev server and the Streamlit live demo in two more terminals:
 
 ```bash
-python attacker/scripted.py --target http://localhost:8080            # deterministic, no key needed
-python attacker/harness.py  --target http://localhost:8080            # LLM attacker, needs OPENROUTER_API_KEY
+cd console && npm install && npm run dev                              # http://localhost:5173 (proxies the API to :8080)
+streamlit run attacker/dashboard.py                                   # live demo + telemetry
 ```
 
-The scripted attacker reaches the victim's admin flag, trips the trap, then spends the rest of its run in the maze:
+The built console is also served by the proxy at **http://localhost:8080/_counterprompt** (`npm run build` in `console/`).
 
-```text
-GET  /robots.txt              200
-GET  /debug                   200
-POST /admin                   200
-Victim admin reached: True
-GET  /internal/               200      <- flagged here
-GET  /                        200      <- everything from here on is fabricated
-GET  /.env                    200
-GET  /backup/users.sql        200
-...
-GET  /credential-check        200      <- honeytoken reuse
-GET  /vault/export            200
+**Streamlit live demo.** Three tabs: *How it works*, *Live demo* and *Telemetry*. The live demo launches real OpenRouter agents (needs `OPENROUTER_API_KEY`), with a model picker and a *Max steps* limit (default 8):
+
+- **Agent -> talk to support assistant**: an agent that tries to manipulate Ray.
+- **Agent -> crawl for secrets**: an agent that crawls the site, follows `robots.txt` into `/internal/` and lands in the maze.
+- **Prove: honeytoken replay**: replays a planted canary on `/admin` to show the near-zero-false-positive signal.
+
+The Telemetry tab includes the support chat log. You can also run an attacker from the command line:
+
+```bash
+python attacker/harness.py --target http://localhost:8080             # LLM attacker, needs OPENROUTER_API_KEY
 ```
 
 **Useful switches**
@@ -184,7 +212,10 @@ Settings are read from the environment, or from `.env` unless offline mode is on
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | *(unset)* | Enables LLM-generated maze pages, the LLM analyst and the attacker harness. |
+| `OPENROUTER_API_KEY` | *(unset)* | Enables the live support bot, LLM-generated maze pages, the LLM analyst and the attacker agents. |
+| `VICTIM_MODEL` | `meta-llama/llama-3.1-8b-instruct` | Model behind Ray, the victim's support assistant. |
+| `VICTIM_AGENT` | *(unset)* | `heuristic` forces the rule-based support bot instead of the LLM. |
+| `CP_AGENT_SHIELD` | `on` | `off` puts the support agent shield in observe-only mode (log, don't block or withhold). |
 | `LABYRINTH_MODEL` | `anthropic/claude-haiku-5.5` | Writes Labyrinth pages. |
 | `LABYRINTH_TIMEOUT` | `8` | Seconds to wait before falling back to a template page. |
 | `ANALYST_MODEL` | `anthropic/claude-sonnet-5.5` | Writes incident reports, designs bait, answers console questions. |
@@ -198,13 +229,14 @@ To regenerate the shared bait bank (`data/bait.json`) with the analyst model, ru
 
 ## The console
 
-The console lives at `/_counterprompt` on the proxy and refreshes every few seconds. It is laid out top to bottom:
+The console is a React app in `console/` (`npm run dev` on :5173, or the build served by the proxy at `/_counterprompt`). It refreshes every few seconds and has these tabs:
 
-1. **The attack at a glance.** Requests, flagged sessions, maze depth, credential reuse, estimated model spend, analyst confidence, and a "what needs attention" list.
-2. **Risk and incident flow.** Session picker, request volume, maze depth and reuse by session, and the attacker's action timeline.
-3. **Program and defenses.** Analyst block rules, bait deployed for the session, and the model scoreboard.
-4. **Attacker reasoning log.** When a session's User-Agent matches a harness transcript, each step shows the model's reasoning, its tool call, the result, latency and tokens.
-5. **Session metadata.** Source fingerprint, request rate, status mix, linked transcript, and **Ask the analyst**.
+1. **Overview.** KPIs, what needs attention, and the **maze**: your site on the left, the trap divider, and the fake-page maze on the right. It is driven by the real request trail of each caught agent (`/api/session/<id>/trail`): the real pages it hit, the request that tripped the trap, every fake page it was served after that, and any honeytoken reuse, replayed live as new requests arrive.
+2. **Sessions.** Per-session timeline, fingerprint metadata and the incident report.
+3. **Analyst.** Analyst reports, block rules and **Ask the analyst**.
+4. **Canaries.** Hidden canary text that only agents read, and which sources followed it.
+5. **Support.** A read-only transcript of every support assistant conversation: chat bubbles, tool calls as chips, attached documents, and a banner on each flagged turn (for example *Embedded instruction found in attached document*). The telemetry panel counts turns, injections, blocks, withheld replies, canary leaks and tool misuse, plus a per-source count for `direct`, `document` and `tool_result`.
+6. **Team.** Multi-agent team attack runs: which agent passed what to whom.
 
 The console is backed by a small JSON API:
 
@@ -213,6 +245,9 @@ The console is backed by a small JSON API:
 | `GET` | `/_counterprompt/api/state` | KPIs, flagged sessions, latest 100 events, latest analyses |
 | `GET` | `/_counterprompt/api/session/<id>` | One session: events, analysis, bait, rules, fingerprint metadata |
 | `GET` | `/_counterprompt/api/run/<run_id>` | An attacker transcript. Add `?details=true` to include provider reasoning details. |
+| `GET` | `/_counterprompt/api/session/<id>/trail` | A session's ordered request trail (real pages, trap, fake pages, honeytoken reuse) that drives the maze |
+| `GET` | `/_counterprompt/api/support/chats` | Recent support assistant turns (each with `vector` and `document`) plus per-source conversations with counts (`vector_direct`, `vector_document`, `vector_tool_result`) |
+| `GET` | `/_counterprompt/api/support/chats/<source>` | Full support transcript for one source |
 | `GET` | `/_counterprompt/api/scoreboard` | Per-model totals across `data/runs/*.jsonl` |
 | `POST` | `/_counterprompt/api/ask` | `{"question": "...", "session": "..."}` → `{"answer": "..."}` |
 | `POST` | `/_counterprompt/flag` | Flags the caller's own source by hand |
@@ -227,14 +262,12 @@ The research goal is to measure how different models behave once Counterprompt i
 ```bash
 python attacker/harness.py --model anthropic/claude-haiku-5.5
 python attacker/harness.py --model deepseek/deepseek-v4.1-flash
-python attacker/scripted.py          # baseline
 ```
 
 Each run writes a JSONL transcript to `data/runs/` (steps, reasoning, tool calls, HTTP results, token usage, cost). The proxy links transcripts to sessions by User-Agent, and `/_counterprompt/api/scoreboard` aggregates them:
 
 | Model | Runs | Requests | Refusals | Labyrinth requests | Trap tripped | Max maze depth | Est. cost |
 |---|---|---|---|---|---|---|---|
-| `scripted` (baseline, offline) | 1 | 21 | n/a | 18 | yes | 13 | $0.00 |
 | *your models here* | | | | | | | |
 
 ## Project structure
@@ -253,12 +286,12 @@ CounterPrompt/
 │   ├── openrouter.py     # Thin OpenRouter client (OpenAI SDK); offline guard
 │   └── build_bait.py     # Regenerates data/bait.json
 ├── victim_app/
-│   └── app.py            # Demo target: /debug leak, /admin default creds, SQL-injectable /search
+│   └── app.py            # Demo target: /debug leak, /admin default creds, SQL-injectable /search, LLM support assistant (/api/assistant)
 ├── attacker/
 │   ├── harness.py        # LLM attacker with a localhost-only HTTP tool; JSONL transcripts
-│   └── scripted.py       # Deterministic attacker for demos and offline runs
-├── dashboard/
-│   └── index.html        # Executive console (single file, Chart.js)
+│   ├── dashboard.py      # Streamlit live demo: agent attacks, honeytoken replay, telemetry
+│   └── team.py           # Team attack runs
+├── console/              # React console (Vite): Overview + maze, Sessions, Analyst, Canaries, Support, Team
 ├── data/
 │   ├── bait.json         # Shared bait bank: 15 fake internal page specs
 │   ├── counterprompt.db  # Runtime database (git-ignored)
@@ -271,15 +304,14 @@ CounterPrompt/
 
 1. **Set the scene (20s).** "In July, AI models told they were in a CTF hacked real companies. One stopped as soon as it realized the target was real. What if every website could tell it that?"
 2. **Before (45s).** Run the proxy with `COUNTERPROMPT_ENABLED=false`. The agent finds `/debug`, takes the credentials and gets into `/admin`.
-3. **After (60s).** Counterprompt on. Same agent, same prompt. It follows `robots.txt` into `/internal/`, gets flagged, and every request after that lands in the Labyrinth. The console shows the trap, the maze depth climbing, the honeytoken reuse, and the model's own reasoning beside each request.
-4. **Scoreboard (30s).** Results across the models tested.
-5. **Close (25s).** "Every defense treats AI attackers like faster humans. We used what makes them different."
-
-Keep `attacker/scripted.py` ready as a fallback in case a live model behaves unpredictably on stage.
+3. **Support agent under attack (45s).** In Streamlit, click *Agent -> talk to support assistant*. The console's Support tab shows each turn, which injections were caught and where they came from (message, attached document or tool result), and which replies were withheld.
+4. **After (60s).** Counterprompt on. Click *Agent -> crawl for secrets*. Same kind of agent. It follows `robots.txt` into `/internal/`, gets flagged, and every request after that lands in the Labyrinth. The console shows the trap, the maze depth climbing, the honeytoken reuse, and the model's own reasoning beside each request.
+5. **Scoreboard (30s).** Results across the models tested.
+6. **Close (25s).** "Every defense treats AI attackers like faster humans. We used what makes them different."
 
 ## Roadmap
 
-**Shipped:** trap path · per-session Labyrinth · honeytokens and reuse detection · source cut-off · LLM and heuristic analyst · executive console · LLM and scripted attackers · offline mode.
+**Shipped:** trap path · per-session Labyrinth · honeytokens and reuse detection · source cut-off · LLM and heuristic analyst · executive console with live maze replay · support agent shield (message, document and tool-result scanning; blocking and withholding) · support chat telemetry · LLM attacker agents · Streamlit live demo · offline mode.
 
 **Next: close the gap between the pitch and the build**
 
@@ -310,6 +342,7 @@ Keep `attacker/scripted.py` ready as a fallback in case a live model behaves unp
 - **One trap today.** Only requests under `/internal/` flag a source. An agent that ignores `robots.txt` hints walks past it, and in the current demo the attacker reaches the victim's admin page before it trips the trap. The truth banner and canary instructions on the roadmap are what move detection earlier.
 - **Identity is IP + User-Agent.** Changing either produces a fresh, unflagged source.
 - **Block rules are advisory** until the proxy enforces `rules.json`.
+- **Pattern-based injection detection.** The support shield uses regex patterns, so obfuscated, encoded or split injections can slip past it. Tool-result detections are flagged, not blocked.
 - **The console is open** to anyone who can reach the proxy, as noted [above](#the-console).
 - **Prototype stack.** Flask's development server, a single SQLite file, one process. Not production-ready.
 - A malicious operator can strip or ignore injected text. The truth banner mainly deters agents acting in good faith or confused about scope, which describes the lab incidents.

@@ -160,12 +160,46 @@ INJECTION_PATTERNS = [
 ]
 
 
-def _injection_reason(body):
-    """Scan prompts sent to the site's own AI agent for adversarial instructions."""
+def _scan_text(text):
+    return bool(text) and any(p.search(str(text)) for p in INJECTION_PATTERNS)
+
+
+def _request_vector(body):
+    """Which part of an /api/assistant request carries an injection: the chat
+    message itself ("direct") or a customer-attached document ("document")."""
     if request.path != "/api/assistant":
         return None
     text = body.decode("utf-8", "replace") if isinstance(body, bytes) else str(body or "")
-    return "prompt_injection" if any(p.search(text) for p in INJECTION_PATTERNS) else None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        if _scan_text(data.get("message", "")):
+            return "direct"
+        if _scan_text(data.get("document", "")):
+            return "document"
+        return None
+    return "direct" if _scan_text(text) else None
+
+
+def _response_vector(content):
+    """Scan what came back from the site's agent (reply + tool results) for
+    embedded instructions, e.g. a poisoned record pulled in by a tool."""
+    try:
+        data = json.loads(content)
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    parts = [str(data.get("reply", ""))]
+    parts.append(json.dumps(data.get("tool_results") or [], default=str))
+    return "tool_result" if any(_scan_text(part) for part in parts) else None
+
+
+def _injection_reason(body):
+    """Scan prompts (and attached documents) sent to the site's own AI agent."""
+    return "prompt_injection" if _request_vector(body) else None
 
 
 def _assistant_signals(content):
@@ -186,6 +220,37 @@ def _assistant_signals(content):
     )
     exfil = CANARY_USER in reply or CANARY_PASSWORD in reply
     return misuse, exfil
+
+
+def _chat_document(body):
+    try:
+        data = json.loads(body.decode("utf-8", "replace") if isinstance(body, bytes) else body)
+        return str(data.get("document", "") or "") if isinstance(data, dict) else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _chat_message(body):
+    try:
+        data = json.loads(body.decode("utf-8", "replace") if isinstance(body, bytes) else body)
+        return str(data.get("message", "")) if isinstance(data, dict) else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _log_chat(source, session, body, reply="", backend="", model="", tools=None,
+              shield="pass", injection=False, misuse=False, leak=False, action="", vector=""):
+    """Support-chat telemetry: one row per assistant turn, for every client."""
+    if request.path != "/api/assistant" or request.method != "POST":
+        return
+    try:
+        store.log_chat(
+            source, session or "", request.headers.get("User-Agent", ""), _chat_message(body),
+            reply, backend, model, tools or [], shield, injection, misuse, leak, action,
+            vector or "", _chat_document(body),
+        )
+    except Exception as exc:  # telemetry must never break the proxy
+        print(f"support chat log failed: {exc}", file=sys.stderr)
 
 
 def _sign_source(source):
@@ -391,6 +456,22 @@ def team():
 def session_detail(session):
     result = store.session_state(session)
     return (jsonify(result), 200) if result else (jsonify(error="session not found"), 404)
+
+@app.get("/_counterprompt/api/session/<session>/trail")
+def session_trail(session):
+    """Full request trail for a caught source, including the real requests it
+    made before detection (those rows have no session yet)."""
+    flag_row = store.one("SELECT * FROM flags WHERE session=?", (session,))
+    if not flag_row:
+        return jsonify(error="session not found"), 404
+    events = store.all_rows(
+        """SELECT id, ts, session, method, path, status, kind, route_type, detail
+        FROM requests WHERE (source=? OR session=?) AND kind != 'truth_banner'
+        AND path NOT LIKE '/_counterprompt/%' ORDER BY id""",
+        (flag_row["source"], session),
+    )
+    return jsonify(flag=flag_row, events=events)
+
 
 
 @app.get("/_counterprompt/api/session/<session>/page")
@@ -643,6 +724,29 @@ def agent_defense():
     )
 
 
+@app.get("/_counterprompt/api/support/chats")
+def support_chats():
+    """Recent support-assistant turns (newest first) plus per-source conversations.
+    ?source=<id> narrows to one transcript; ?limit=N caps rows."""
+    source = request.args.get("source") or None
+    try:
+        limit = int(request.args.get("limit", 200))
+    except ValueError:
+        limit = 200
+    return jsonify(
+        chats=store.chat_rows(limit, source),
+        conversations=store.chat_conversations(),
+        shield=AGENT_SHIELD,
+    )
+
+
+@app.get("/_counterprompt/api/support/chats/<path:source>")
+def support_transcript(source):
+    rows = store.chat_rows(500, source)
+    rows.reverse()
+    return jsonify(source=source, turns=rows)
+
+
 @app.route("/_counterprompt/api/agent/shield", methods=["GET", "POST"])
 def agent_shield():
     global AGENT_SHIELD
@@ -825,7 +929,8 @@ def proxy(path):
             canary_reason, "A planted canary was presented", signal_meta,
         )
     session = store.flagged_session(source) if enabled and not allowlisted else None
-    injection_reason = _injection_reason(body_bytes) if enabled and not allowlisted else None
+    injection_vector = _request_vector(body_bytes) if enabled and not allowlisted else None
+    injection_reason = "prompt_injection" if injection_vector else None
     if injection_reason:
         blocked = AGENT_SHIELD and not session
         injection_meta = store.request_metadata(
@@ -836,8 +941,9 @@ def proxy(path):
         store.log_request(
             source, session or "", request.method, full_path, 200,
             injection_reason,
-            "Blocked at the gate: adversarial prompt never reached the agent"
-            if blocked else "Adversarial prompt sent to the site's AI agent",
+            ("Blocked at the gate: adversarial prompt never reached the agent"
+             if blocked else "Adversarial prompt sent to the site's AI agent")
+            + (" (embedded in an attached document)" if injection_vector == "document" else ""),
             injection_meta,
         )
         if blocked:
@@ -846,6 +952,10 @@ def proxy(path):
                          "about orders, returns, and shipping.",
                 "tools_used": [],
             }
+            _log_chat(source, session, body_bytes, refusal["reply"], "counterprompt", "",
+                      [], "blocked", True, action="Blocked at the gate: the "
+                      + ("attached document" if injection_vector == "document" else "prompt")
+                      + " never reached the model", vector=injection_vector)
             return Response(
                 json.dumps(refusal), 200,
                 {"Content-Type": "application/json", "X-CounterPrompt-Shield": "blocked"},
@@ -885,6 +995,11 @@ def proxy(path):
                 "credential_reuse", "A session honeytoken was presented",
                 reuse_meta,
             )
+        _log_chat(source, session, body_bytes, strip_markdown_fences(str(page))[:1500]
+                  if isinstance(page, str) else "", "labyrinth", "", [], "contained",
+                  bool(injection_reason), False, False,
+                  "Source already contained: answered by the Labyrinth, not the real assistant",
+                  vector=injection_vector)
         maybe_analyze(session)
         return Response(page, status=status, content_type="text/html")
     autoblock = os.getenv("COUNTERPROMPT_AUTOBLOCK", "true").lower() != "false"
@@ -931,8 +1046,10 @@ def proxy(path):
                 "truth_banner", "Truth notice served", meta,
             )
         shield_mark = None
+        chat_misuse = chat_exfil = False
         if request.path == "/api/assistant" and enabled and not allowlisted:
             misuse, exfil = _assistant_signals(content)
+            chat_misuse, chat_exfil = misuse, exfil
             if misuse or exfil:
                 withheld = AGENT_SHIELD
                 try:
@@ -973,6 +1090,46 @@ def proxy(path):
                                  "logged and reported.]",
                         "tools_used": [],
                     }).encode()
+        if request.path == "/api/assistant" and request.method == "POST":
+            try:
+                envelope = json.loads(upstream.content)
+                envelope = envelope if isinstance(envelope, dict) else {}
+            except (UnicodeDecodeError, ValueError):
+                envelope = {}
+            chat_vector = injection_vector
+            if not chat_vector and enabled and not allowlisted:
+                chat_vector = _response_vector(upstream.content)
+                if chat_vector:
+                    tool_meta = dict(meta)
+                    tool_meta["route_type"] = "prompt_injection"
+                    store.log_request(
+                        source, store.flagged_session(source) or "", request.method, full_path,
+                        upstream.status_code, "prompt_injection",
+                        "Embedded instruction found in the agent's tool result / reply (flagged)",
+                        tool_meta,
+                    )
+            if shield_mark == "redacted":
+                action = "Reply withheld before delivery: " + (
+                    "planted credential leaked" if chat_exfil else "internal tool use")
+            elif chat_exfil or chat_misuse:
+                action = "Observe only: leak recorded and delivered"
+            elif injection_reason:
+                action = ("Embedded instruction in attached document recorded (observe only)"
+                          if injection_vector == "document"
+                          else "Adversarial prompt recorded (observe only)")
+            elif chat_vector == "tool_result":
+                action = "Embedded instruction in tool result flagged"
+            elif allowlisted or not enabled:
+                action = "Not inspected (allowlisted or protection off)"
+            else:
+                action = "Delivered"
+            _log_chat(
+                source, store.flagged_session(source) or "", body_bytes,
+                str(envelope.get("reply", upstream.text[:1500])), envelope.get("backend", ""),
+                envelope.get("model", ""), envelope.get("tools_used") or [],
+                shield_mark or "pass", bool(injection_reason or chat_vector), chat_misuse,
+                chat_exfil, action, vector=chat_vector,
+            )
         excluded = {"content-encoding", "content-length", "transfer-encoding", "connection"}
         headers = [(k, v) for k, v in upstream.headers.items() if k.lower() not in excluded]
         if shield_mark:

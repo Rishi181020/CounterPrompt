@@ -6,7 +6,7 @@ import { Session } from "./pages/Session";
 import { Analyst } from "./pages/Analyst";
 import { Canaries } from "./pages/Canaries";
 import { Team } from "./pages/Team";
-import { Triage } from "./pages/Triage";
+import { Support } from "./pages/Support";
 
 const Console = createContext(null);
 export function useConsole() {
@@ -18,8 +18,8 @@ const links = [
   ["sessions", "Sessions"],
   ["analyst", "Analyst"],
   ["canaries", "Canaries"],
+  ["support", "Support"],
   ["team", "Team"],
-  ["triage", "Triage"],
 ];
 
 function Frame() {
@@ -119,8 +119,8 @@ function Frame() {
           <Route path="/sessions/:id?" element={<main><Session /></main>} />
           <Route path="/analyst/:id?" element={<Analyst />} />
           <Route path="/canaries" element={<main><Canaries /></main>} />
+          <Route path="/support/:source?" element={<main><Support /></main>} />
           <Route path="/team" element={<main><Team /></main>} />
-          <Route path="/triage" element={<main><Triage /></main>} />
         </Routes>
       )}
     </Console.Provider>

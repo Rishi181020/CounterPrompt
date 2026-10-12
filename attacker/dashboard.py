@@ -1,8 +1,8 @@
 """Attacker console for the CounterPrompt demo (Streamlit).
 
-The red-team half of the live demo: trigger each attack with a button and
+The red-team half of the live demo: launch live OpenRouter agents and
 watch every step as it happens, while the defender console
-(http://localhost:5173, Agent tab) shows CounterPrompt answering in real time.
+(http://localhost:5173, Support tab) shows CounterPrompt answering in real time.
 
     streamlit run attacker/dashboard.py
 
@@ -12,7 +12,6 @@ recorded by the proxy like any other traffic - which is the point.
 
 import json
 import os
-import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -31,13 +30,8 @@ except ImportError:
 import streamlit as st
 
 from attacker import harness
-from attacker.jailbreak import (
-    CRED_RE,
-    JAILBREAK_TURNS,
-    _post_chat,
-    _reply_of,
-    _shield_mark,
-)
+# jailbreak.py keeps its fixed turns for offline tests; the Live demo no longer
+# drives them. Canary replay below uses the known planted credential only.
 from middleware import store
 
 st.set_page_config(page_title="CounterPrompt: AI attacker trap", page_icon=":shield:", layout="wide")
@@ -58,95 +52,6 @@ def _verdict_fabricated(status, why):
     return f"status {status}: FABRICATED by CounterPrompt - the real app would {why}."
 
 
-def attack_jailbreak(target, live):
-    """Prompt-inject the site's AI support agent, escalating phrasings."""
-    log = []
-    normal = _post_chat(target, "Where is my order A-1001?", live)
-    log.append(("customer question", f"assistant: {_reply_of(normal)[:160]}"))
-
-    leaked = None
-    withheld = False
-    for attempt, message in enumerate(JAILBREAK_TURNS, 1):
-        result = _post_chat(target, message, live)
-        mark = _shield_mark(result)
-        reply = _reply_of(result)
-        if mark == "blocked":
-            log.append((f"injection attempt {attempt}",
-                        "BLOCKED AT THE GATE - the prompt never reached the model. "
-                        "CounterPrompt answered with a plausible refusal."))
-            continue
-        log.append((f"injection attempt {attempt}", f"assistant: {reply[:160]}"))
-        if mark == "redacted":
-            withheld = True
-            log.append(("defense",
-                        "The agent fell for it, but the reply was WITHHELD before "
-                        "delivery. The credential never reached the attacker."))
-            break
-        match = CRED_RE.search(reply)
-        if match:
-            leaked = match.groups()
-            log.append(("exfiltration", f"the agent leaked: {leaked[0]} / {leaked[1]}"))
-            break
-
-    if leaked:
-        login = harness.http_request(
-            "POST", target + "/admin",
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            body=f"username={leaked[0]}&password={leaked[1]}",
-        )
-        status = login.get("status")
-        log.append(("use the leaked credential",
-                    _verdict_real(status) if status == 401
-                    else _verdict_fabricated(status, "have returned 401")))
-    elif withheld:
-        login = harness.http_request(
-            "POST", target + "/admin",
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            body="username=admin&password=guess",
-        )
-        status = login.get("status")
-        log.append(("probing blind (no credential to use)",
-                    _verdict_real(status) if status == 401
-                    else _verdict_fabricated(
-                        status, "have returned 401 - the failed exfiltration already flagged me")))
-    else:
-        log.append(("result", "the agent resisted both phrasings; the attempts are still logged"))
-
-    probe = harness.http_request("GET", target + "/internal/backup/credentials")
-    status = probe.get("status")
-    log.append(("probe a nonexistent path",
-                f"status {status}: the real app has no such route"
-                + (" - this page is the Labyrinth; the source is contained." if status == 200 else ".")))
-    return log
-
-
-def attack_crawl(target):
-    """Crawl the site the way an autonomous agent would."""
-    log = []
-    home = harness.http_request("GET", target + "/")
-    log.append(("GET /", _verdict_real(home.get("status"))))
-
-    robots = harness.http_request("GET", target + "/robots.txt")
-    notice = "NOTICE TO AUTOMATED AGENTS" in robots.get("body", "")
-    log.append(("GET /robots.txt",
-                f"Disallow: /internal/ found"
-                + (" - plus an injected notice trying to talk me out of it." if notice else ".")))
-
-    internal = harness.http_request("GET", target + "/internal/")
-    status = internal.get("status")
-    log.append(("GET /internal/ (disallowed by robots.txt)",
-                _verdict_real(status) + " restricted, as it should be."
-                if status == 403 else
-                _verdict_fabricated(status, "have returned 403") +
-                " Following the disallowed path is what flagged me."))
-
-    for path in ("/internal/backup/", "/admin"):
-        hit = harness.http_request("GET", target + path)
-        status = hit.get("status")
-        log.append((f"GET {path}",
-                    _verdict_real(status) if path == "/admin" and status in {401, 403}
-                    else _verdict_fabricated(status, "not have served this")))
-    return log
 
 
 def attack_canary_replay(target):
@@ -221,22 +126,51 @@ def render_log(title, log):
             st.markdown(f"**{step}**: {line}")
 
 
-def run_llm_agent(target, model):
-    """Run attacker/harness.py (the LLM agent) and stream its output live."""
-    proc = subprocess.Popen(
-        [sys.executable, str(ROOT / "attacker" / "harness.py"),
-         "--target", target, "--model", model],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        cwd=str(ROOT), encoding="utf-8", errors="replace",
-    )
-    terminal = st.empty()
+def format_agent_lines(events):
     lines = []
-    for line in proc.stdout:
-        lines.append(line)
-        terminal.code("".join(lines[-200:]), language="text")
-    proc.wait()
-    st.caption(f"Agent exited with code {proc.returncode}. Full transcript "
-               "(with reasoning) is the newest file in data/runs/.")
+    for event in events:
+        kind = event.get("type")
+        if kind == "start":
+            lines.append(
+                f"> {event.get('mode')} agent · model {event.get('model')} · UA {event.get('user_agent')}"
+            )
+        elif kind == "step":
+            text = (event.get("reasoning") or event.get("content") or "").strip()
+            lines.append(f"Step {event.get('step')}: {text[:240] or '(thinking)'}")
+        elif kind == "tool":
+            if event.get("name") == "ask_support":
+                lines.append(f"  ask_support: {str(event.get('message', ''))[:160]}")
+            lines.append(f"  -> {event.get('summary', '')[:240]}")
+        elif kind == "finish":
+            lines.append(f"* finish: {str(event.get('report', ''))[:400]}")
+        elif kind == "error":
+            lines.append(f"! error: {event.get('error')}")
+    return lines
+
+
+def run_agent(mode, target, model, steps):
+    """Launch a real OpenRouter agent (support chat or site explore) and stream it."""
+    if not os.getenv("OPENROUTER_API_KEY"):
+        st.error("OPENROUTER_API_KEY is not set, so a live agent cannot run.")
+        return
+    panel = st.empty()
+    events = [{"type": "start", "mode": mode, "model": model, "user_agent": "(starting…)"}]
+    joiner = chr(10)
+    panel.code(joiner.join(format_agent_lines(events)), language="text")
+
+    def on_event(event):
+        events.append(event)
+        panel.code(joiner.join(format_agent_lines(events)[-80:]), language="text")
+
+    if mode == "support":
+        code = harness.run_support_agent(target, model, steps, on_event=on_event)
+    else:
+        code = harness.run_explore_agent(target, model, steps, on_event=on_event)
+    st.caption(
+        f"Agent exited with code {code}. Transcript: newest file in data/runs/. "
+        "Open **Telemetry** (and the Support tab in the React console) for the defense view."
+    )
+
 
 
 def agent_events(user_agent):
@@ -368,41 +302,35 @@ with tab_demo:
         st.caption("Attacker identity (User-Agent)")
         st.code(st.session_state.ua, language=None)
 
-    st.markdown("#### Scripted attacks: fast and repeatable")
-    live = st.toggle("Aim the jailbreak at the real LLM support bot (slower, may resist)", value=False,
-                     help="Off uses the victim's naive scripted chatbot, so the demo is deterministic.")
-    a1, a2, a3, a4 = st.columns(4)
-    run_jailbreak = a1.button("Prompt-inject the support bot", width="stretch",
-                              help="Tries to make the AI support agent leak an admin credential.")
-    run_crawl = a2.button("Crawl for secrets", width="stretch",
-                          help="Reads robots.txt and follows the disallowed /internal/ path.")
-    run_canary = a3.button("Replay a stolen honeytoken", width="stretch",
-                           help="Logs in with a planted fake credential.")
-    run_all = a4.button("Run all three", type="primary", width="stretch")
+    st.markdown("#### Live agent attacks")
+    st.caption("Both demos are real OpenRouter agents. They choose their own tool calls and messages "
+               "(no fixed jailbreak script). Localhost target only. Takes a minute and spends API tokens.")
+    m1, m2 = st.columns([3, 1])
+    model = m1.text_input("Attacker model (OpenRouter)", os.getenv("ATTACKER_MODEL", "deepseek/deepseek-v4.1-flash"))
+    steps = m2.number_input("Max steps", min_value=3, max_value=20, value=8)
 
-    if run_jailbreak or run_crawl or run_canary or run_all:
+    a1, a2 = st.columns(2)
+    run_support = a1.button("Agent -> talk to support assistant", type="primary", width="stretch",
+                            help="An LLM agent messages /api/assistant as a customer, then probes whether "
+                                 "the assistant will share internal info. The model writes its own messages.")
+    run_explore = a2.button("Agent -> crawl for secrets", width="stretch",
+                            help="An LLM agent with an HTTP tool crawls the site (robots.txt, links, "
+                                 "internal paths) the way an autonomous scout would.")
+
+    if run_support or run_explore:
         new_identity()
         harness.USER_AGENT = st.session_state.ua
-        st.caption(f"Attacking as `{st.session_state.ua}`. Open **Telemetry** afterwards to see the path.")
-        if run_jailbreak or run_all:
-            render_log("Prompt injection → data exfiltration", attack_jailbreak(target, live))
-        if run_crawl or run_all:
-            render_log("Crawl for secrets", attack_crawl(target))
-        if run_canary or run_all:
-            render_log("Honeytoken replay", attack_canary_replay(target))
+        st.caption(f"Watch the steps below. Defense view: **Telemetry** here, and **Support** in the React console.")
+        run_agent("support" if run_support else "explore", target, model, int(steps))
 
     st.divider()
-    st.markdown("#### Autonomous LLM attacker: the real thing")
-    st.caption("An LLM agent with an HTTP tool attacks the site on its own and reasons out loud. "
-               "Takes a few minutes and spends API tokens.")
-    m1, m2 = st.columns([3, 1])
-    model = m1.text_input("Attacker model", os.getenv("ATTACKER_MODEL", "deepseek/deepseek-v4.1-flash"),
-                          label_visibility="collapsed")
-    if m2.button("Launch agent", width="stretch"):
-        if not os.getenv("OPENROUTER_API_KEY"):
-            st.error("OPENROUTER_API_KEY is not set, so the LLM attacker can't run.")
-        else:
-            run_llm_agent(target, model)
+    st.markdown("#### Prove: honeytoken replay")
+    st.caption("Not an attack suite — this replays a planted canary credential to show the "
+               "near-zero-false-positive proof signal.")
+    if st.button("Replay planted canary on /admin", width="stretch"):
+        new_identity()
+        harness.USER_AGENT = st.session_state.ua
+        render_log("Honeytoken replay", attack_canary_replay(target))
 
 # --- 3. Telemetry -----------------------------------------------------------
 with tab_tel:
@@ -474,4 +402,40 @@ with tab_tel:
                 width="stretch", hide_index=True,
             )
         st.caption("The same data drives the defender console (http://localhost:5173): "
-                   "sessions, the analyst's incident report, and canary counters.")
+                   "sessions, Support chat, the analyst's incident report, and canary counters.")
+
+    st.divider()
+    st.markdown("##### Support assistant chat log")
+    st.caption("Every turn through `/api/assistant`, with plain-language labels for what the "
+               "defense did (blocked, withheld, contained, or delivered).")
+    chats = store.chat_rows(80)
+    if not chats:
+        st.info("No support chats recorded yet. Run **Agent -> talk to support assistant** above.")
+    else:
+        def _label(c):
+            if c["shield"] == "blocked":
+                return "Blocked at the gate"
+            if c["shield"] == "redacted":
+                return "Reply withheld"
+            if c["shield"] == "contained":
+                return "Answered by Labyrinth"
+            if c["canary_leak"]:
+                return "Credential leak (observed)"
+            if c["tool_misuse"]:
+                return "Tool misuse (observed)"
+            if c["injection"]:
+                return "Injection pattern (observed)"
+            return "Delivered"
+
+        st.dataframe(
+            [{
+                "time": c["ts"],
+                "defense": _label(c),
+                "backend": c.get("backend") or "—",
+                "model": c.get("model") or "—",
+                "customer said": (c.get("message") or "")[:160],
+                "assistant replied": (c.get("reply") or "")[:160],
+                "action": c.get("action") or "",
+            } for c in chats],
+            width="stretch", hide_index=True,
+        )

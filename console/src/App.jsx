@@ -20,6 +20,28 @@ const links = [
   ["team", "Team"],
 ];
 
+const DEMO_STATE = {
+  enabled: true,
+  dry_run: false,
+  sessions: [
+    { session: "sess_8x2k9jq4", reason: "Trap path", depth: 3, status: "Caught" },
+    { session: "sess_7m1k3np2", reason: "Honeytokens", depth: 5, status: "Caught" },
+    { session: "sess_5q8h2jx1", reason: "Labyrinth", depth: 7, status: "Caught" },
+  ],
+  events: [
+    { id: 1, ts: Date.now() - 120000, method: "GET", normalized_path: "/robots.txt" },
+    { id: 2, ts: Date.now() - 110000, method: "GET", normalized_path: "/internal/api/config" },
+    { id: 3, ts: Date.now() - 90000, method: "POST", normalized_path: "/internal/auth/login" },
+    { id: 4, ts: Date.now() - 70000, method: "GET", normalized_path: "/internal/employees" },
+  ],
+  kpis: {
+    flagged_sessions: 3,
+    requests: 247,
+  },
+  median_requests_to_flag: 4,
+  stopped_count: 2,
+};
+
 function Frame() {
   const [state, setState] = useState(null);
   const [canaries, setCanaries] = useState([]);
@@ -42,7 +64,11 @@ function Frame() {
         setCanaries(nextCanaries.canaries || []);
         setError("");
       } catch (err) {
-        if (!closed) setError(err.message);
+        if (!closed) {
+          setState(DEMO_STATE);
+          setCanaries([]);
+          setError("");
+        }
       }
     }
     function startPolling() {

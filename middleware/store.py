@@ -72,8 +72,20 @@ def init_db():
             CREATE TABLE IF NOT EXISTS allowlist (
                 source TEXT PRIMARY KEY, note TEXT DEFAULT '', created_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS support_chats (
+                id INTEGER PRIMARY KEY, ts TEXT, source TEXT, session TEXT DEFAULT '',
+                user_agent TEXT DEFAULT '', message TEXT DEFAULT '', reply TEXT DEFAULT '',
+                backend TEXT DEFAULT '', model TEXT DEFAULT '', tools_json TEXT DEFAULT '[]',
+                shield TEXT DEFAULT 'pass', injection INTEGER DEFAULT 0,
+                tool_misuse INTEGER DEFAULT 0, canary_leak INTEGER DEFAULT 0,
+                action TEXT DEFAULT ''
+            );
             """
         )
+        chat_cols = {row["name"] for row in db.execute("PRAGMA table_info(support_chats)")}
+        for name, definition in {"vector": "TEXT DEFAULT ''", "document": "TEXT DEFAULT ''"}.items():
+            if name not in chat_cols:
+                db.execute(f"ALTER TABLE support_chats ADD COLUMN {name} {definition}")
         columns = {row["name"] for row in db.execute("PRAGMA table_info(requests)")}
         for name, definition in META_COLUMNS.items():
             if name not in columns:
@@ -164,6 +176,58 @@ def log_request(source, session, method, path, status, kind="request", detail=""
             meta["source_ip"], meta["user_agent"], meta["normalized_path"],
         ),
     )
+
+
+def log_chat(source, session="", user_agent="", message="", reply="", backend="", model="",
+             tools=None, shield="pass", injection=False, tool_misuse=False, canary_leak=False,
+             action="", vector="", document=""):
+    """One row per /api/assistant turn seen by the proxy (support-chat telemetry)."""
+    return execute(
+        """INSERT INTO support_chats(ts,source,session,user_agent,message,reply,backend,model,
+        tools_json,shield,injection,tool_misuse,canary_leak,action,vector,document)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            now(), str(source or ""), str(session or ""), str(user_agent or "")[:500],
+            str(message or "")[:4000], str(reply or "")[:4000], str(backend or "")[:40],
+            str(model or "")[:120], json.dumps(tools or [], default=str)[:4000],
+            str(shield or "pass")[:20], int(bool(injection)), int(bool(tool_misuse)),
+            int(bool(canary_leak)), str(action or "")[:500],
+            str(vector or "")[:20], str(document or "")[:4000],
+        ),
+    )
+
+
+def chat_rows(limit=200, source=None):
+    limit = max(1, min(int(limit or 200), 1000))
+    if source:
+        rows = all_rows(
+            "SELECT * FROM support_chats WHERE source=? ORDER BY id DESC LIMIT ?", (source, limit)
+        )
+    else:
+        rows = all_rows("SELECT * FROM support_chats ORDER BY id DESC LIMIT ?", (limit,))
+    for row in rows:
+        row["tools_used"] = _json_value(row.pop("tools_json", "[]"), [])
+        for key in ("injection", "tool_misuse", "canary_leak"):
+            row[key] = bool(row[key])
+    return rows
+
+
+def chat_conversations(limit=50):
+    rows = all_rows(
+        """SELECT source, MAX(user_agent) user_agent, MAX(session) session, COUNT(*) turns,
+        MIN(ts) first_ts, MAX(ts) last_ts, MAX(id) last_id,
+        SUM(shield='blocked') blocked, SUM(shield='redacted') redacted,
+        SUM(shield='contained') contained, SUM(injection) injections,
+        SUM(canary_leak) canary_leaks, SUM(tool_misuse) tool_misuse,
+        MAX(model) model, SUM(vector='direct') vector_direct,
+        SUM(vector='document') vector_document, SUM(vector='tool_result') vector_tool_result
+        FROM support_chats GROUP BY source ORDER BY last_id DESC LIMIT ?""",
+        (max(1, min(int(limit or 50), 500)),),
+    )
+    for row in rows:
+        row["flagged"] = bool(row["blocked"] or row["redacted"] or row["contained"]
+                              or row["injections"] or row["canary_leaks"] or row["tool_misuse"])
+    return rows
 
 
 def flag(source, reason="trap"):

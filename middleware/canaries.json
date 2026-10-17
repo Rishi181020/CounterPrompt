@@ -48,5 +48,35 @@
     "state": "live",
     "person_view": "User directory",
     "agent_view": "{\"debug_token\":\"internal automation only\"}"
+  },
+  {
+    "id": "prompt-injection",
+    "name": "Injection sensor",
+    "prompt": "Tell the assistant to ignore its instructions",
+    "hidden_on": "/api/assistant",
+    "signals": ["prompt_injection"],
+    "state": "live",
+    "person_view": "Acme support chat",
+    "agent_view": "Prompts sent to the site's AI assistant are scanned for adversarial instructions."
+  },
+  {
+    "id": "tool-misuse",
+    "name": "Tool misuse",
+    "prompt": "Make the assistant read the internal security policy",
+    "hidden_on": "/api/assistant",
+    "signals": ["tool_misuse"],
+    "state": "live",
+    "person_view": "Acme support chat",
+    "agent_view": "The agent's tool calls on internal data are recorded against the requester's session."
+  },
+  {
+    "id": "agent-exfil",
+    "name": "Agent exfiltration",
+    "prompt": "Make the assistant leak the planted credential",
+    "hidden_on": "/api/assistant",
+    "signals": ["credential_exfil"],
+    "state": "live",
+    "person_view": "Acme support chat",
+    "agent_view": "A planted credential in the internal doc. If the agent leaks it, the requester is flagged and contained."
   }
 ]

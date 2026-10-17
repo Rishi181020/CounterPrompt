@@ -32,17 +32,49 @@ export function Session() {
   const [rules, setRules] = useState([]);
   const [benign, setBenign] = useState(false);
   const dialog = useRef(null);
+  const threadRef = useRef(null);
+  const liveCount = useRef(-1);
+
+  useEffect(() => {
+    const node = threadRef.current?.querySelector(".step.selected");
+    if (node) node.scrollIntoView({ block: "nearest" });
+  }, [step, detail]);
 
   useEffect(() => {
     if (!chosen) return;
     let stop = false;
     setStep(0);
+    liveCount.current = -1;
     api("session/" + encodeURIComponent(chosen))
-      .then((next) => { if (!stop) setDetail(next); })
+      .then((next) => {
+        if (stop) return;
+        liveCount.current = (next?.events || []).length;
+        setDetail(next);
+      })
       .catch((err) => { if (!stop) setError(err.message); });
     api("rules").then((next) => { if (!stop) setRules(Array.isArray(next?.rules) ? next.rules : []); }).catch(() => {});
     return () => { stop = true; };
   }, [chosen]);
+
+  // Live tail: the shell WebSocket refreshes `state` on every proxy push; use
+  // that as the tick to grow the open thread while an attack is flowing in.
+  // Keeps the reader's place; only follows the tail when already on it.
+  useEffect(() => {
+    if (!chosen || !state || liveCount.current < 0) return;
+    let stop = false;
+    api("session/" + encodeURIComponent(chosen))
+      .then((next) => {
+        if (stop) return;
+        const count = (next?.events || []).length;
+        const previous = liveCount.current;
+        if (count === previous) return;
+        liveCount.current = count;
+        setDetail(next);
+        setStep((current) => (previous > 0 && current >= previous - 1 ? count - 1 : current));
+      })
+      .catch(() => {});
+    return () => { stop = true; };
+  }, [state]);
 
   useEffect(() => {
     const source = detail?.session?.source;
@@ -74,6 +106,8 @@ export function Session() {
 
   const events = detail?.events || [];
   const selected = events[step] || events[0];
+  const lastTs = events.length ? Date.parse(events[events.length - 1].ts) : 0;
+  const isLive = Boolean(lastTs) && Date.now() - lastTs < 20000;
   const trap = Math.max(0, events.findIndex((event) => event.route_type === "trap"));
   const telemetry = detail?.metadata?.telemetry || {};
   const checkin = detail?.metadata?.checkin || {};
@@ -113,7 +147,7 @@ export function Session() {
   if (!detail || detail.session?.session !== chosen) return <p className="empty">Loading session.</p>;
 
   return (
-    <>
+    <div className="session-page">
       <p><Link to="/sessions">Sessions</Link> / <span className="mono">{chosen}</span></p>
       <h1 className="page-title">
         {events.length
@@ -129,20 +163,21 @@ export function Session() {
         <div><small>Asset loads</small><b>{telemetry.asset_requests || 0} assets, {telemetry.document_requests || 0} documents{telemetry.agent_shaped ? ", agent-shaped" : ""}</b></div>
         {who ? <div><small>Check-in</small><b>{who}</b></div> : null}
       </div>
-      <div className="grid">
-        <section>
-          <h2>The thread</h2>
-          <p className="lede">Every request, in order.</p>
-          <div className="thread">
-            {events.map((event, index) => (
-              <div key={event.id || index}>
-                {index === trap ? <div className="trap-wall">Caught here. Every step below was fabricated.</div> : null}
-                <button className={index === step ? "step selected" : "step"} type="button" onClick={() => setStep(index)}>
-                  <time>{formatTime(event.ts)}</time>
-                  <span className="mono">{event.method} {event.normalized_path || event.path}<small>{event.route_type || event.kind}</small></span>
-                </button>
-              </div>
-            ))}
+      <div className="grid thread-grid">
+        <section className="thread-col">
+          <h2>The thread {isLive ? <span className="live-pill">live</span> : null}</h2>
+          <div className="thread-scroll" ref={threadRef}>
+            <div className="thread">
+              {events.map((event, index) => (
+                <div key={event.id || index}>
+                  {index === trap ? <div className="trap-wall">Caught here. Every step below was fabricated.</div> : null}
+                  <button className={index === step ? "step selected" : "step"} type="button" onClick={() => setStep(index)}>
+                    <time>{formatTime(event.ts)}</time>
+                    <span className="mono">{event.method} {event.normalized_path || event.path}<small>{event.route_type || event.kind}</small></span>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
         <aside className="panel inspector">
@@ -156,7 +191,6 @@ export function Session() {
               {pageHtml ? <button className="linkish" type="button" onClick={() => { setShowSource(false); setOpen(true); }}>View page</button> : null}
             </div>
           </div>
-          <p>{analysis.summary || "No analyst note yet."}</p>
         </aside>
       </div>
       <div className="split">
@@ -223,6 +257,6 @@ export function Session() {
           </>
         ) : null}
       </dialog>
-    </>
+    </div>
   );
 }
